@@ -84,6 +84,7 @@ export default function App() {
   const [selectedDriveFile, setSelectedDriveFile] = useState<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -367,6 +368,14 @@ export default function App() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  useEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const maxPx = 160; // ~6-7 lines
+    el.style.height = `${Math.min(el.scrollHeight, maxPx)}px`;
+  }, [input]);
 
   const fetchAllFolders = async () => {
     fetchDriveFiles(PUBLIC_FOLDER_ID, setPublicFiles);
@@ -658,7 +667,7 @@ export default function App() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden flex flex-col">
+    <div className="relative h-[100dvh] overflow-hidden flex flex-col">
       {/* Background Atmosphere */}
       <div className="fixed inset-0 z-0 atmosphere pointer-events-none" />
       
@@ -951,7 +960,7 @@ export default function App() {
           </AnimatePresence>
 
           {/* Chat Area */}
-          <div className="flex-1 flex flex-col overflow-hidden items-center">
+          <div className="flex-1 flex flex-col overflow-hidden items-center h-full">
             {messages.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center text-center space-y-6 sm:space-y-8 px-4 max-w-3xl w-full">
                 <motion.div 
@@ -996,7 +1005,7 @@ export default function App() {
             ) : (
               <div 
                 ref={scrollRef}
-                className="flex-1 overflow-y-auto space-y-6 sm:space-y-8 pr-2 sm:pr-4 scrollbar-hide pb-32"
+                className="flex-1 overflow-y-auto space-y-6 sm:space-y-8 pr-2 sm:pr-4 scrollbar-hide"
               >
                 <AnimatePresence initial={false}>
                   {messages.map((message) => (
@@ -1058,8 +1067,7 @@ export default function App() {
             )}
 
             {/* Input Area */}
-            <div className="sticky bottom-0 mt-4 sm:mt-6 relative w-full max-w-3xl px-2 sm:px-0 pb-2 sm:pb-0">
-              <div className="absolute inset-x-0 bottom-full h-10 bg-gradient-to-t from-[#05020a] to-transparent pointer-events-none" />
+            <div className="mt-4 sm:mt-6 relative w-full max-w-3xl px-2 sm:px-0 pb-2 sm:pb-0">
               {/* Image Size Selection Affordance - Internal Only */}
               {mode === 'internal' && (
                 <div className="absolute bottom-full mb-3 right-0 flex items-center gap-2 p-1.5 glass rounded-xl">
@@ -1092,12 +1100,19 @@ export default function App() {
                 className="relative flex items-center gap-2"
               >
                 <div className="relative flex-1">
-                  <input
-                    type="text"
+                  <textarea
+                    ref={composerRef}
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSubmit();
+                      }
+                    }}
+                    rows={1}
                     placeholder={mode === 'public' ? "Whisper your thoughts..." : "Draft a grant or analyze data..."}
-                    className="w-full glass bg-white/5 rounded-2xl py-3.5 sm:py-5 pl-4 sm:pl-6 pr-20 sm:pr-32 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 transition-all placeholder:text-stone-600"
+                    className="w-full glass bg-white/5 rounded-2xl py-3.5 sm:py-4 pl-4 sm:pl-6 pr-20 sm:pr-32 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 transition-all placeholder:text-stone-600 resize-none overflow-y-auto leading-relaxed"
                   />
                   <div className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 sm:gap-1">
                     <button

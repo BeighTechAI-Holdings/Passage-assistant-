@@ -12,6 +12,11 @@
 }
 
 @layer base {
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+  }
   body {
     @apply bg-[#05020a] text-stone-200 antialiased selection:bg-accent/30;
     font-family: var(--font-sans);
