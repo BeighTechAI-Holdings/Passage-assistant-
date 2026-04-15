@@ -14,7 +14,10 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const token = getTokenFromCookieHeader(getCookieHeaderFromReq(req));
+    const token = getTokenFromCookieHeader(
+      getCookieHeaderFromReq(req),
+      process.env.SESSION_SECRET
+    );
     if (!token) {
       res.statusCode = 401;
       res.setHeader('Content-Type', 'application/json');

@@ -2,7 +2,10 @@ import { getCookieHeaderFromReq, getTokenFromCookieHeader } from '../lib/cookies
 
 export default async function handler(req: any, res: any) {
   try {
-    const token = getTokenFromCookieHeader(getCookieHeaderFromReq(req));
+    const token = getTokenFromCookieHeader(
+      getCookieHeaderFromReq(req),
+      process.env.SESSION_SECRET
+    );
     res.statusCode = 200;
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Cache-Control', 'no-store');

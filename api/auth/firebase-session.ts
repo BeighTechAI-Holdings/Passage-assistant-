@@ -60,7 +60,11 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
-    const cookie = buildSetTokenCookie(accessToken, 60 * 60 * 24 * 7); // 7 days max-age (Google token may expire sooner)
+    const cookie = buildSetTokenCookie(
+      accessToken,
+      60 * 60 * 24 * 7,
+      process.env.SESSION_SECRET
+    );
     res.statusCode = 200;
     res.setHeader('Set-Cookie', cookie);
     res.setHeader('Content-Type', 'application/json');
