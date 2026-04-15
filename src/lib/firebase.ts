@@ -7,6 +7,7 @@ import {
   getRedirectResult,
 } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import firebaseAppletConfig from '../../firebase-applet-config.json';
 
 /** Client Firebase config from env (Vercel + local .env). Do not commit secrets; set in Vercel Project → Environment Variables. */
 const firebaseConfig = {
@@ -19,8 +20,13 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || undefined,
 };
 
+/**
+ * Named Firestore DB from firebase-applet-config.json (AI Studio / non-default DB).
+ * Override with VITE_FIREBASE_FIRESTORE_DATABASE_ID; use "(default)" for the default database only.
+ */
+const envDbId = import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID?.trim().replace(/^["']|["']$/g, '') || '';
 const firestoreDatabaseId =
-  import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID?.trim() || '(default)';
+  envDbId === '(default)' ? '' : envDbId || firebaseAppletConfig.firestoreDatabaseId;
 
 export const isFirebaseConfigured = !!(
   firebaseConfig.apiKey &&
@@ -37,7 +43,11 @@ if (!isFirebaseConfigured) {
 const app = isFirebaseConfigured ? initializeApp(firebaseConfig) : null;
 
 export const auth = app ? getAuth(app) : null;
-export const db = app ? getFirestore(app, firestoreDatabaseId) : null;
+export const db = app
+  ? firestoreDatabaseId
+    ? getFirestore(app, firestoreDatabaseId)
+    : getFirestore(app)
+  : null;
 
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope('https://www.googleapis.com/auth/drive.readonly');

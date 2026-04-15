@@ -1,9 +1,21 @@
 {
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin-allow-popups"
+        }
+      ]
+    }
+  ],
   "installCommand": "npm install",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
     "api/**/*.ts": {
+      "runtime": "nodejs20.x",
       "maxDuration": 60
     }
   },

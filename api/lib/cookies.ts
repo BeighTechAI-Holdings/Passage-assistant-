@@ -1,17 +1,27 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 
 const COOKIE_NAME = 'pt_drive_token';
 
-/** Signed cookie format: v1.<base64url(payload)>.<base64url(hmac)> */
+/** Compact signed cookie: v1|<hex-hmac>|token — avoids base64 expansion that breaks 4KB Set-Cookie limit. */
 function signToken(accessToken: string, secret: string): string {
-  const payload = Buffer.from(accessToken, 'utf8').toString('base64url');
-  const sig = createHmac('sha256', secret)
-    .update(`v1|${payload}`, 'utf8')
-    .digest('base64url');
-  return `v1.${payload}.${sig}`;
+  const sig = createHmac('sha256', secret).update(accessToken, 'utf8').digest('hex');
+  return `v1|${sig}|${accessToken}`;
 }
 
-function verifySignedToken(value: string, secret: string): string | null {
+function verifyPipeSigned(value: string, secret: string): string | null {
+  const parts = value.split('|');
+  if (parts.length !== 3 || parts[0] !== 'v1') return null;
+  const [, sigHex, token] = parts;
+  if (!sigHex || !token) return null;
+  const expected = createHmac('sha256', secret).update(token, 'utf8').digest('hex');
+  const a = Buffer.from(sigHex, 'utf8');
+  const b = Buffer.from(expected, 'utf8');
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  return token;
+}
+
+/** Legacy: v1.<base64url(payload)>.<base64url(hmac)> — may exceed cookie size for long tokens. */
+function verifyLegacyDotSigned(value: string, secret: string): string | null {
   const parts = value.split('.');
   if (parts.length !== 3 || parts[0] !== 'v1') return null;
   const [, payload, sig] = parts;
@@ -39,7 +49,7 @@ export function getCookieHeaderFromReq(req: { headers?: { cookie?: string | stri
 
 /**
  * Read Drive OAuth access token from Cookie header.
- * If `SESSION_SECRET` is set (pass `secret`), expects HMAC-signed `v1.*` cookie values.
+ * If `SESSION_SECRET` is set (pass `secret`), expects HMAC-signed `v1|*` or legacy `v1.*` cookie values.
  * If unset, accepts the legacy plain URL-encoded token (dev / older deploys).
  */
 export function getTokenFromCookieHeader(
@@ -59,8 +69,11 @@ export function getTokenFromCookieHeader(
 
     const s = typeof secret === 'string' ? secret.trim() : '';
     if (s) {
+      if (raw.startsWith('v1|')) {
+        return verifyPipeSigned(raw, s);
+      }
       if (raw.startsWith('v1.')) {
-        return verifySignedToken(raw, s);
+        return verifyLegacyDotSigned(raw, s);
       }
       return null;
     }
