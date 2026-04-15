@@ -56,7 +56,7 @@ OUR TEAM:
 
 TICKET HANDLING (REQUIRED):
 When asked about buying tickets, availability, or specific performances:
-- ALWAYS provide the official ticketing link: https://www.passagetheatre.org/shows-events
+- ALWAYS provide the official ticketing link: https://www.passagetheatre.org/tickets
 - ALWAYS provide Box Office contact: (609) 392-0766
 - Highlight these links and important info (like actor names or "BUY TICKETS HERE") by wrapping them in [PURPLE]...[/PURPLE].
 

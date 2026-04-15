@@ -55,7 +55,7 @@ const UPCOMING_SHOWS = [
     name: 'Muleheaded', 
     description: 'A powerful new production exploring resilience and determination. Part of our Season 41 lineup.',
     thumbnailLink: 'https://static.wixstatic.com/media/f5611b_6751971f47bc41ae894e33a08cff2f55~mv2.png/v1/fill/w_810,h_1012,al_c,q_90,usm_0.66_1.00_0.01,enc_avif,quality_auto/Muleheaded.png',
-    link: null,
+    link: 'https://www.passagetheatre.org',
     mimeType: 'image/png'
   },
   { 
@@ -63,7 +63,7 @@ const UPCOMING_SHOWS = [
     name: 'The Dutchman', 
     description: 'Amiri Baraka\'s classic play. A tense, symbolic encounter on a New York subway.',
     thumbnailLink: 'https://static.wixstatic.com/media/f5611b_0f67008f4c6c4253a5b95a1d33cc51a6~mv2.png/v1/fill/w_810,h_1012,al_c,q_90,usm_0.66_1.00_0.01,enc_avif,quality_auto/Dutchman.png',
-    link: null,
+    link: 'https://www.passagetheatre.org',
     mimeType: 'image/png'
   }
 ];
@@ -92,7 +92,9 @@ export default function App() {
   const composerFormRef = useRef<HTMLFormElement | null>(null);
 
   const [isListening, setIsListening] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
+  /** Which message is using TTS, and whether we're waiting on the server vs actually playing audio. */
+  const [ttsTargetId, setTtsTargetId] = useState<string | null>(null);
+  const [ttsPhase, setTtsPhase] = useState<'idle' | 'loading' | 'playing'>('idle');
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
   const ttsAbortRef = useRef<AbortController | null>(null);
   const [imageSize, setImageSize] = useState<"1K" | "2K" | "4K">("1K");
@@ -296,8 +298,10 @@ export default function App() {
     }
   };
 
-  const speakText = (text: string) => {
-    const stop = () => {
+  const TTS_MAX_CHARS = 3800;
+
+  const speakText = (text: string, messageId: string) => {
+    const silenceTtsAudio = () => {
       try {
         ttsAbortRef.current?.abort();
       } catch {}
@@ -309,20 +313,37 @@ export default function App() {
         URL.revokeObjectURL(ttsAudioRef.current.src);
       }
       if (ttsAudioRef.current) ttsAudioRef.current.src = '';
-      setIsSpeaking(false);
     };
 
-    if (isSpeaking) {
+    const stop = () => {
+      silenceTtsAudio();
+      setTtsPhase('idle');
+      setTtsTargetId(null);
+    };
+
+    if (ttsTargetId === messageId && ttsPhase !== 'idle') {
       stop();
       return;
     }
 
-    const cleanText = text.replace(/\[PURPLE\]|\[\/PURPLE\]|\*\*|\*/g, '').trim();
+    let cleanText = text.replace(/\[PURPLE\]|\[\/PURPLE\]|\*\*|\*/g, '').trim();
     if (!cleanText) return;
+    if (cleanText.length > TTS_MAX_CHARS) {
+      cleanText = cleanText.slice(0, TTS_MAX_CHARS) + '\n[…]';
+    }
+
+    silenceTtsAudio();
 
     const controller = new AbortController();
     ttsAbortRef.current = controller;
-    setIsSpeaking(true);
+    setTtsTargetId(messageId);
+    setTtsPhase('loading');
+
+    const onFinallyFail = () => {
+      silenceTtsAudio();
+      setTtsPhase('idle');
+      setTtsTargetId(null);
+    };
 
     fetch('/api/tts', {
       method: 'POST',
@@ -339,18 +360,28 @@ export default function App() {
       })
       .then((blob) => {
         const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
+        const audio = new Audio();
+        audio.preload = 'auto';
         ttsAudioRef.current = audio;
+        audio.src = url;
         audio.onended = () => stop();
-        audio.onerror = () => stop();
-        return audio.play();
+        audio.onerror = () => {
+          onFinallyFail();
+        };
+        return audio.play().then(() => {
+          setTtsPhase('playing');
+        });
       })
       .catch((e) => {
         if (e?.name !== 'AbortError') {
           console.error('[TTS] Failed:', e);
-          alert('Voice playback failed. Check ELEVENLABS_API_KEY on the server.');
+          const msg =
+            e?.name === 'NotAllowedError'
+              ? 'Playback was blocked. Try tapping Listen again, or check that this site can play sound.'
+              : 'Voice playback failed. Check ELEVENLABS_API_KEY on the server.';
+          alert(msg);
         }
-        stop();
+        onFinallyFail();
       });
   };
 
@@ -366,7 +397,7 @@ export default function App() {
           return (
             <a 
               key={i} 
-              href="https://www.passagetheatre.org/shows-events" 
+              href="https://www.passagetheatre.org/tickets" 
               target="_blank" 
               rel="noopener noreferrer"
               className="highlight-purple underline decoration-accent/30"
@@ -487,12 +518,6 @@ export default function App() {
     }
   };
 
-  /** Full sign-out (Firebase + Drive cookie) then reload — fixes Reset not logging out. */
-  const handleResetAndReload = async () => {
-    await handleSignOut();
-    window.location.reload();
-  };
-
   const deleteSession = async (sessionId: string) => {
     if (!db || !currentUser) return;
     const ok = window.confirm('Delete this chat? This cannot be undone.');
@@ -602,7 +627,7 @@ export default function App() {
         const driveOk = await checkAuthStatus();
         if (!driveOk) {
           alert(
-            'You are signed in. Chat history will save to this account.\n\nGoogle Drive did not connect (server error). Try Login again in a moment, or use Reset if stuck.'
+            'You are signed in. Chat history will save to this account.\n\nGoogle Drive did not connect (server error). Try Login again in a moment, or sign out from your account menu (avatar) and try again.'
           );
         } else {
           fetchAllFolders();
@@ -933,31 +958,21 @@ export default function App() {
             </button>
           )}
           {mode === 'internal' && (!currentUser || !isAuthenticated) && (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleGoogleLogin}
-                disabled={isLoggingIn}
-                className="flex items-center gap-2 px-2.5 py-1.5 sm:px-4 sm:py-2 bg-white/10 hover:bg-white/20 rounded-xl text-[9px] sm:text-xs transition-all disabled:opacity-50"
-              >
-                {isLoggingIn ? <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" /> : <LogIn className="w-3 h-3 sm:w-4 sm:h-4" />}
-                <span className="hidden sm:inline">
-                  {isLoggingIn
-                    ? 'Connecting...'
-                    : currentUser
-                      ? 'Connect Drive'
-                      : 'Login'}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleResetAndReload()}
-                className="p-2 hover:bg-white/10 rounded-xl text-stone-500 text-[8px] uppercase tracking-widest"
-                title="Sign out and reload"
-              >
-                Reset
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={handleGoogleLogin}
+              disabled={isLoggingIn}
+              className="flex items-center gap-2 px-2.5 py-1.5 sm:px-4 sm:py-2 bg-white/10 hover:bg-white/20 rounded-xl text-[9px] sm:text-xs transition-all disabled:opacity-50"
+            >
+              {isLoggingIn ? <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" /> : <LogIn className="w-3 h-3 sm:w-4 sm:h-4" />}
+              <span className="hidden sm:inline">
+                {isLoggingIn
+                  ? 'Connecting...'
+                  : currentUser
+                    ? 'Connect Drive'
+                    : 'Login'}
+              </span>
+            </button>
           )}
           <div className="relative z-[110]">
             <button
@@ -1226,10 +1241,10 @@ export default function App() {
                   </div>
                   <div className="pt-4 border-t border-white/5">
                     <button 
-                      onClick={() => window.open('https://www.passagetheatre.org/shows-events', '_blank')}
+                      onClick={() => window.open('https://www.passagetheatre.org/tickets', '_blank')}
                       className="w-full py-2.5 lg:py-3 rounded-xl bg-white/5 hover:bg-white/10 text-[9px] lg:text-[10px] uppercase tracking-widest text-stone-400 hover:text-white transition-all border border-white/5"
                     >
-                      View All Events
+                      Get tickets
                     </button>
                   </div>
                 </motion.div>
@@ -1314,12 +1329,33 @@ export default function App() {
                           </div>
                           {message.role === 'model' && (
                             <button 
-                              onClick={() => speakText(message.content)}
+                              type="button"
+                              onClick={() => speakText(message.content, message.id)}
                               className="mt-3 p-1.5 hover:bg-white/10 rounded-full transition-colors flex items-center gap-2 text-[9px] uppercase tracking-widest text-stone-500 hover:text-accent group"
                               title="Listen to response"
                             >
-                              <Volume2 className={`w-3.5 h-3.5 ${isSpeaking ? 'text-accent animate-pulse' : 'group-hover:scale-110 transition-transform'}`} />
-                              <span className="opacity-0 group-hover:opacity-100 transition-opacity">{isSpeaking ? 'Speaking...' : 'Listen'}</span>
+                              <Volume2
+                                className={`w-3.5 h-3.5 ${
+                                  ttsTargetId === message.id && ttsPhase === 'loading'
+                                    ? 'text-stone-400 animate-pulse'
+                                    : ttsTargetId === message.id && ttsPhase === 'playing'
+                                      ? 'text-accent animate-pulse'
+                                      : 'group-hover:scale-110 transition-transform'
+                                }`}
+                              />
+                              <span
+                                className={`transition-opacity ${
+                                  ttsTargetId === message.id && ttsPhase !== 'idle'
+                                    ? 'opacity-100'
+                                    : 'opacity-0 group-hover:opacity-100'
+                                }`}
+                              >
+                                {ttsTargetId === message.id && ttsPhase === 'loading'
+                                  ? 'Preparing audio…'
+                                  : ttsTargetId === message.id && ttsPhase === 'playing'
+                                    ? 'Playing…'
+                                    : 'Listen'}
+                              </span>
                             </button>
                           )}
                         </div>

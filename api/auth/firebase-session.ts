@@ -3,6 +3,11 @@ import { buildSetTokenCookie } from '../lib/cookies';
 /** Keep cookie value under typical 4KB header limits */
 const MAX_TOKEN_CHARS = 3500;
 
+/**
+ * Read JSON POST body on Vercel Node serverless (req may be IncomingMessage with
+ * unparsed body, or body may already be set). Avoids `node:stream/consumers`,
+ * which can fail when bundled for some runtimes.
+ */
 async function readJsonBody(req: any): Promise<Record<string, unknown>> {
   const b = req?.body;
   if (Buffer.isBuffer(b)) {
@@ -14,22 +19,34 @@ async function readJsonBody(req: any): Promise<Record<string, unknown>> {
   }
   if (typeof b === 'string') {
     try {
-      return JSON.parse(b) as Record<string, unknown>;
+      return b.trim() ? (JSON.parse(b) as Record<string, unknown>) : {};
     } catch {
       return {};
     }
   }
-  if (b != null && typeof b === 'object') {
+  if (b != null && typeof b === 'object' && !Array.isArray(b)) {
     return b as Record<string, unknown>;
   }
-  try {
-    const { text } = await import('node:stream/consumers');
-    const raw = await text(req);
-    if (!raw) return {};
-    return JSON.parse(raw) as Record<string, unknown>;
-  } catch {
+
+  if (!req || typeof req.on !== 'function') {
     return {};
   }
+
+  return new Promise((resolve) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer | string) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), 'utf8'));
+    });
+    req.on('end', () => {
+      try {
+        const raw = Buffer.concat(chunks).toString('utf8').trim();
+        resolve(raw ? (JSON.parse(raw) as Record<string, unknown>) : {});
+      } catch {
+        resolve({});
+      }
+    });
+    req.on('error', () => resolve({}));
+  });
 }
 
 export default async function handler(req: any, res: any) {
@@ -76,4 +93,3 @@ export default async function handler(req: any, res: any) {
     res.end(JSON.stringify({ error: e?.message || 'Unknown error' }));
   }
 }
-

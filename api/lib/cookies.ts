@@ -56,31 +56,35 @@ export function getTokenFromCookieHeader(
   cookieHeader: string | undefined | null,
   secret?: string | null
 ) {
-  if (!cookieHeader) return null;
-  const parts = cookieHeader.split(';').map((p) => p.trim());
-  for (const part of parts) {
-    if (!part.startsWith(`${COOKIE_NAME}=`)) continue;
-    let raw = part.slice(COOKIE_NAME.length + 1);
-    try {
-      raw = decodeURIComponent(raw);
-    } catch {
-      /* keep raw */
-    }
-
-    const s = typeof secret === 'string' ? secret.trim() : '';
-    if (s) {
-      if (raw.startsWith('v1|')) {
-        return verifyPipeSigned(raw, s);
+  try {
+    if (!cookieHeader) return null;
+    const parts = cookieHeader.split(';').map((p) => p.trim());
+    for (const part of parts) {
+      if (!part.startsWith(`${COOKIE_NAME}=`)) continue;
+      let raw = part.slice(COOKIE_NAME.length + 1);
+      try {
+        raw = decodeURIComponent(raw);
+      } catch {
+        /* keep raw */
       }
-      if (raw.startsWith('v1.')) {
-        return verifyLegacyDotSigned(raw, s);
-      }
-      return null;
-    }
 
-    return raw || null;
+      const s = typeof secret === 'string' ? secret.trim() : '';
+      if (s) {
+        if (raw.startsWith('v1|')) {
+          return verifyPipeSigned(raw, s);
+        }
+        if (raw.startsWith('v1.')) {
+          return verifyLegacyDotSigned(raw, s);
+        }
+        return null;
+      }
+
+      return raw || null;
+    }
+    return null;
+  } catch {
+    return null;
   }
-  return null;
 }
 
 export function buildSetTokenCookie(
