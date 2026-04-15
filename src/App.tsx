@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, FormEvent, ChangeEvent } from 'react';
+import { useState, useRef, useEffect, useCallback, FormEvent, ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Send, Sparkles, User, Bot, Loader2, Command, Image as ImageIcon, Lock, Globe, LogIn, FileText, X, Volume2, Mic, MicOff, History, Plus, Trash2, SlidersHorizontal, Home } from 'lucide-react';
 import { generateResponse, generateImage, MessagePart } from './lib/gemini';
@@ -100,8 +100,59 @@ export default function App() {
   const recognitionRef = useRef<any>(null);
   const [isImageSizeOpen, setIsImageSizeOpen] = useState(false);
 
+  /** Invalidates in-flight `/api/auth/status` results so a slow initial fetch cannot overwrite state after login sets the cookie. */
+  const authCheckSeq = useRef(0);
+
   const PUBLIC_FOLDER_ID = '1SGoxWRv2WE_SKy4MwJhCl3A6nSy2KGwS';
   const INTERNAL_FOLDER_IDS = ['1l3KRkEaOKsVJLizriswqHn-whyc93aUk', '1j07-wxP7u9r9Y-V4ootX4KN3XB3YY0X4'];
+
+  const fetchDriveFiles = async (folderId: string, setter?: (files: any[]) => void) => {
+    try {
+      const res = await fetch(`/api/drive/files?folderId=${folderId}`, {
+        credentials: 'include',
+      });
+      const text = await res.text();
+      if (!res.ok || !text.trim().startsWith('{')) {
+        if (setter) setter([]);
+        return [];
+      }
+      const data = JSON.parse(text) as { files?: any[] };
+      if (setter) setter(data.files || []);
+      return data.files || [];
+    } catch {
+      if (setter) setter([]);
+      return [];
+    }
+  };
+
+  const fetchAllFolders = async () => {
+    fetchDriveFiles(PUBLIC_FOLDER_ID, setPublicFiles);
+    const files1 = await fetchDriveFiles(INTERNAL_FOLDER_IDS[0]);
+    const files2 = await fetchDriveFiles(INTERNAL_FOLDER_IDS[1]);
+    setDriveFiles([...(files1 || []), ...(files2 || [])]);
+  };
+
+  const checkAuthStatus = useCallback(async (): Promise<boolean> => {
+    const seq = ++authCheckSeq.current;
+    try {
+      const res = await fetch('/api/auth/status', { credentials: 'include' });
+      const text = await res.text();
+      if (seq !== authCheckSeq.current) return false;
+      if (!res.ok || !text.trim().startsWith('{')) {
+        setIsAuthenticated(false);
+        return false;
+      }
+      const data = JSON.parse(text) as { isAuthenticated?: boolean };
+      const ok = !!data.isAuthenticated;
+      if (seq !== authCheckSeq.current) return false;
+      setIsAuthenticated(ok);
+      return ok;
+    } catch {
+      if (seq !== authCheckSeq.current) return false;
+      setIsAuthenticated(false);
+      return false;
+    }
+  }, []);
 
   useEffect(() => {
     if (!auth) return;
@@ -331,17 +382,25 @@ export default function App() {
   };
 
   useEffect(() => {
-    checkAuthStatus();
+    void checkAuthStatus();
     fetchDriveFiles(PUBLIC_FOLDER_ID, setPublicFiles);
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
+        authCheckSeq.current += 1;
         setIsAuthenticated(true);
         fetchAllFolders();
       }
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, []);
+  }, [checkAuthStatus]);
+
+  /** Re-sync Drive cookie after Firebase restores session (cookie may be set slightly after auth). */
+  useEffect(() => {
+    if (!currentUser) return;
+    const t = window.setTimeout(() => void checkAuthStatus(), 400);
+    return () => window.clearTimeout(t);
+  }, [currentUser, checkAuthStatus]);
 
   useEffect(() => {
     // Complete Firebase redirect sign-in (mobile-friendly).
@@ -360,15 +419,19 @@ export default function App() {
             credentials: 'include',
           });
           if (res.ok) {
+            authCheckSeq.current += 1;
             setIsAuthenticated(true);
             fetchAllFolders();
+          } else {
+            const driveOk = await checkAuthStatus();
+            if (driveOk) fetchAllFolders();
           }
         }
       } catch (e) {
         console.error('[Firebase] Redirect completion failed', e);
       }
     })();
-  }, []);
+  }, [checkAuthStatus]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -390,48 +453,6 @@ export default function App() {
     el.style.height = `${Math.min(el.scrollHeight, maxPx)}px`;
   }, [input]);
 
-  const fetchAllFolders = async () => {
-    fetchDriveFiles(PUBLIC_FOLDER_ID, setPublicFiles);
-    // Fetch from both internal folders and combine
-    const files1 = await fetchDriveFiles(INTERNAL_FOLDER_IDS[0]);
-    const files2 = await fetchDriveFiles(INTERNAL_FOLDER_IDS[1]);
-    setDriveFiles([...(files1 || []), ...(files2 || [])]);
-  };
-
-  const checkAuthStatus = async () => {
-    try {
-      const res = await fetch('/api/auth/status', { credentials: 'include' });
-      const text = await res.text();
-      if (!res.ok || !text.trim().startsWith('{')) {
-        setIsAuthenticated(false);
-        return;
-      }
-      const data = JSON.parse(text) as { isAuthenticated?: boolean };
-      setIsAuthenticated(!!data.isAuthenticated);
-    } catch {
-      setIsAuthenticated(false);
-    }
-  };
-
-  const fetchDriveFiles = async (folderId: string, setter?: (files: any[]) => void) => {
-    try {
-      const res = await fetch(`/api/drive/files?folderId=${folderId}`, {
-        credentials: 'include',
-      });
-      const text = await res.text();
-      if (!res.ok || !text.trim().startsWith('{')) {
-        if (setter) setter([]);
-        return [];
-      }
-      const data = JSON.parse(text) as { files?: any[] };
-      if (setter) setter(data.files || []);
-      return data.files || [];
-    } catch {
-      if (setter) setter([]);
-      return [];
-    }
-  };
-
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isFirebaseLoggingIn, setIsFirebaseLoggingIn] = useState(false);
 
@@ -446,6 +467,7 @@ export default function App() {
 
   const handleSignOut = async () => {
     try {
+      authCheckSeq.current += 1;
       // Clear server-side Drive session (if any)
       await fetch('/api/auth/logout', { credentials: 'include' }).catch(() => {});
       // Clear Firebase auth
@@ -577,12 +599,17 @@ export default function App() {
           /* ignore */
         }
         console.warn('[OAuth] Drive session cookie failed:', parsed?.error || msg);
-        setIsAuthenticated(false);
-        alert(
-          'You are signed in. Chat history will save to this account.\n\nGoogle Drive did not connect (server error). Try Login again in a moment, or use Reset if stuck.'
-        );
+        const driveOk = await checkAuthStatus();
+        if (!driveOk) {
+          alert(
+            'You are signed in. Chat history will save to this account.\n\nGoogle Drive did not connect (server error). Try Login again in a moment, or use Reset if stuck.'
+          );
+        } else {
+          fetchAllFolders();
+        }
       } else {
         console.log("[OAuth] Login successful!");
+        authCheckSeq.current += 1;
         setIsAuthenticated(true);
         fetchAllFolders();
       }
