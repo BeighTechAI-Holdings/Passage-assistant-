@@ -77,6 +77,8 @@ export default function App() {
 
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+  const ttsAbortRef = useRef<AbortController | null>(null);
   const [imageSize, setImageSize] = useState<"1K" | "2K" | "4K">("1K");
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const recognitionRef = useRef<any>(null);
@@ -202,36 +204,61 @@ export default function App() {
   };
 
   const speakText = (text: string) => {
-    if (!window.speechSynthesis) return;
-    
-    if (isSpeaking) {
-      window.speechSynthesis.cancel();
+    const stop = () => {
+      try {
+        ttsAbortRef.current?.abort();
+      } catch {}
+      ttsAbortRef.current = null;
+      try {
+        ttsAudioRef.current?.pause();
+      } catch {}
+      if (ttsAudioRef.current?.src) {
+        URL.revokeObjectURL(ttsAudioRef.current.src);
+      }
+      if (ttsAudioRef.current) ttsAudioRef.current.src = '';
       setIsSpeaking(false);
+    };
+
+    if (isSpeaking) {
+      stop();
       return;
     }
 
-    const cleanText = text.replace(/\[PURPLE\]|\[\/PURPLE\]|\*\*|\*/g, '');
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    
-    // Try to find a more natural voice
-    const voices = window.speechSynthesis.getVoices();
-    const preferredVoice = voices.find(v => 
-      v.name.includes('Google US English') || 
-      v.name.includes('Samantha') || 
-      v.name.includes('Natural') ||
-      v.lang === 'en-US'
-    );
-    
-    if (preferredVoice) {
-      utterance.voice = preferredVoice;
-    }
-    
-    utterance.rate = 0.95;
-    utterance.pitch = 1.0;
-    
-    utterance.onend = () => setIsSpeaking(false);
+    const cleanText = text.replace(/\[PURPLE\]|\[\/PURPLE\]|\*\*|\*/g, '').trim();
+    if (!cleanText) return;
+
+    const controller = new AbortController();
+    ttsAbortRef.current = controller;
     setIsSpeaking(true);
-    window.speechSynthesis.speak(utterance);
+
+    fetch('/api/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: cleanText }),
+      signal: controller.signal,
+    })
+      .then(async (r) => {
+        if (!r.ok) {
+          const msg = await r.text().catch(() => '');
+          throw new Error(msg || `TTS failed (${r.status})`);
+        }
+        return r.blob();
+      })
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        ttsAudioRef.current = audio;
+        audio.onended = () => stop();
+        audio.onerror = () => stop();
+        return audio.play();
+      })
+      .catch((e) => {
+        if (e?.name !== 'AbortError') {
+          console.error('[TTS] Failed:', e);
+          alert('Voice playback failed. Check ELEVENLABS_API_KEY on the server.');
+        }
+        stop();
+      });
   };
 
   const renderContent = (content: string) => {

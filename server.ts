@@ -126,6 +126,44 @@ async function startServer() {
     });
   });
 
+  // ElevenLabs TTS proxy (local dev). On Vercel, use /api/tts serverless function.
+  app.post("/api/tts", async (req, res) => {
+    try {
+      const apiKey = process.env.ELEVENLABS_API_KEY;
+      const voiceId = process.env.ELEVENLABS_VOICE_ID || "c6SfcYrb2t09NHXiT80T";
+      const text = String(req.body?.text || "").trim();
+
+      if (!apiKey) return res.status(500).json({ error: "Missing ELEVENLABS_API_KEY" });
+      if (!text) return res.status(400).json({ error: "Missing text" });
+
+      const elevenRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "audio/mpeg",
+          "xi-api-key": apiKey,
+        },
+        body: JSON.stringify({
+          text,
+          model_id: "eleven_multilingual_v2",
+          voice_settings: { stability: 0.45, similarity_boost: 0.85 },
+        }),
+      });
+
+      if (!elevenRes.ok) {
+        const details = await elevenRes.text().catch(() => "");
+        return res.status(502).json({ error: "ElevenLabs request failed", status: elevenRes.status, details });
+      }
+
+      const audio = Buffer.from(await elevenRes.arrayBuffer());
+      res.setHeader("Content-Type", "audio/mpeg");
+      res.setHeader("Cache-Control", "no-store");
+      res.send(audio);
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || "Unknown error" });
+    }
+  });
+
   // Drive API Proxy
   app.get("/api/drive/files", async (req, res) => {
     const tokens = (req.session as any).tokens;
