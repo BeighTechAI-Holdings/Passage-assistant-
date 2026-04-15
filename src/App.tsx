@@ -100,6 +100,24 @@ export default function App() {
   const PUBLIC_FOLDER_ID = '1SGoxWRv2WE_SKy4MwJhCl3A6nSy2KGwS';
   const INTERNAL_FOLDER_IDS = ['1l3KRkEaOKsVJLizriswqHn-whyc93aUk', '1j07-wxP7u9r9Y-V4ootX4KN3XB3YY0X4'];
 
+  const MAX_DRIVE_CONTEXT_CHARS = 20_000;
+  const fetchSelectedDriveFileText = async (fileId: string) => {
+    try {
+      const res = await fetch(`/api/drive/file/${encodeURIComponent(fileId)}`);
+      if (!res.ok) {
+        const msg = await res.text().catch(() => '');
+        throw new Error(msg || `Failed to fetch drive file (${res.status})`);
+      }
+      const text = await res.text();
+      if (!text) return '';
+      if (text.length <= MAX_DRIVE_CONTEXT_CHARS) return text;
+      return text.slice(0, MAX_DRIVE_CONTEXT_CHARS) + '\n\n[Truncated: file too large]';
+    } catch (e) {
+      console.error('[Drive] Failed to read selected file', e);
+      return '[Error: could not read file content]';
+    }
+  };
+
   useEffect(() => {
     if (!auth) return;
 
@@ -676,6 +694,13 @@ export default function App() {
           };
         }
 
+        let driveContext: string | undefined = undefined;
+        if (mode === 'internal' && selectedDriveFile?.id) {
+          const content = await fetchSelectedDriveFileText(selectedDriveFile.id);
+          const safeName = selectedDriveFile?.name ? String(selectedDriveFile.name) : 'Selected file';
+          driveContext = `CONTENT FROM GOOGLE DRIVE FILE (${safeName}):\n\n${content}`;
+        }
+
         const history = messages.map(m => ({
           role: m.role,
           parts: [{ text: m.content }] as MessagePart[]
@@ -686,7 +711,7 @@ export default function App() {
           history, 
           mode, 
           imagePart,
-          selectedDriveFile ? `Context from file ${selectedDriveFile.name}: [Content would be fetched here]` : undefined
+          driveContext
         );
         
         responseContent = response || "I'm sorry, I couldn't process that.";

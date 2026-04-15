@@ -9,21 +9,28 @@ import cookieParser from "cookie-parser";
 async function startServer() {
   const app = express();
   const PORT = 3000;
+  const isProduction = process.env.NODE_ENV === "production";
 
   app.use(express.json());
   app.use(cookieParser());
-  // 1. Session Configuration (Optimized for Iframes)
+  if (isProduction) {
+    // Required when running behind a reverse proxy (Vercel/Cloud Run/etc.)
+    app.set("trust proxy", 1);
+  }
+  // 1. Session Configuration
+  // - Local dev: secure cookies are rejected on http://localhost.
+  // - Prod: use SameSite=None + Secure for iframe compatibility over HTTPS.
   app.use(
     session({
-      secret: "passage-theatre-session-secret-2024",
-      resave: true,
-      saveUninitialized: true,
-      proxy: true,
+      secret: process.env.SESSION_SECRET || "passage-dev-secret",
+      resave: false,
+      saveUninitialized: false,
+      proxy: isProduction,
       cookie: {
-        secure: true,
-        sameSite: "none",
+        secure: isProduction,
+        sameSite: isProduction ? "none" : "lax",
         httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week
       },
     })
   );
@@ -198,11 +205,36 @@ async function startServer() {
 
     try {
       const fileId = req.params.fileId;
-      const response = await drive.files.get({
+      // First fetch metadata so we can export Google Docs types.
+      const meta = await drive.files.get({
         fileId,
-        alt: "media",
+        fields: "id,name,mimeType,size",
       });
-      res.send(response.data);
+      const mimeType = meta.data.mimeType || "";
+
+      // Google Workspace files must be exported.
+      const isGoogleDoc = mimeType.startsWith("application/vnd.google-apps.");
+      if (isGoogleDoc) {
+        let exportMimeType = "text/plain";
+        if (mimeType === "application/vnd.google-apps.spreadsheet") {
+          exportMimeType = "text/csv";
+        } else if (mimeType === "application/vnd.google-apps.presentation") {
+          exportMimeType = "text/plain";
+        }
+        const exported = await drive.files.export(
+          { fileId, mimeType: exportMimeType },
+          { responseType: "text" as any }
+        );
+        res.setHeader("Content-Type", `${exportMimeType}; charset=utf-8`);
+        res.setHeader("Cache-Control", "no-store");
+        return res.send(exported.data as any);
+      }
+
+      // Regular files can be downloaded directly.
+      const downloaded = await drive.files.get({ fileId, alt: "media" }, { responseType: "text" as any });
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      res.setHeader("Cache-Control", "no-store");
+      res.send(downloaded.data as any);
     } catch (error) {
       console.error("Drive API error:", error);
       res.status(500).json({ error: "Failed to fetch file content" });
