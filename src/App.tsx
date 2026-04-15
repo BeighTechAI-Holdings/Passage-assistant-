@@ -66,6 +66,7 @@ export default function App() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isEventsPinnedOpen, setIsEventsPinnedOpen] = useState(false);
   
   const [isEventsOpen, setIsEventsOpen] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ file: File, preview: string } | null>(null);
@@ -109,6 +110,15 @@ export default function App() {
       }
     });
     return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onResize = () => {
+      if (window.innerWidth >= 1024) setIsEventsPinnedOpen(false);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, []);
 
   const fetchSessions = (uid: string) => {
@@ -599,14 +609,20 @@ export default function App() {
       {/* Header */}
       <header className="relative z-10 flex items-center justify-between px-4 sm:px-8 py-4 sm:py-6 border-b border-white/5 backdrop-blur-md">
         <div className="flex items-center gap-2 sm:gap-3">
-          <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-full border-2 border-accent/30 flex items-center justify-center overflow-hidden bg-stone-900 shadow-[0_0_20px_rgba(139,92,246,0.2)]">
+          <button
+            type="button"
+            onClick={() => window.open('https://www.passagetheatre.org', '_blank', 'noopener,noreferrer')}
+            className="w-9 h-9 sm:w-12 sm:h-12 rounded-full border-2 border-accent/30 flex items-center justify-center overflow-hidden bg-stone-900 shadow-[0_0_20px_rgba(139,92,246,0.2)] cursor-pointer transition-transform hover:scale-[1.03] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-accent/60"
+            aria-label="Open Passage Theatre website"
+            title="Open Passage Theatre"
+          >
             <img 
-              src="https://picsum.photos/seed/passage-theatre-sign/200/200" 
+              src="/passage.jpeg" 
               alt="Passage Logo" 
               referrerPolicy="no-referrer" 
-              className="w-full h-full object-cover" 
+              className="w-full h-full object-contain" 
             />
-          </div>
+          </button>
           <div className="hidden xs:block">
             <h1 className="text-base sm:text-xl font-medium tracking-tight text-white leading-none">Passage</h1>
             <p className="text-[7px] sm:text-[9px] uppercase tracking-[0.3em] text-accent font-bold mt-1">Theatre Assistant</p>
@@ -661,7 +677,7 @@ export default function App() {
             </div>
           )}
           <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-white/10 flex items-center justify-center overflow-hidden">
-            <img src={currentUser?.photoURL || "https://picsum.photos/seed/user/100/100"} alt="User" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+            <img src={currentUser?.photoURL || "/passage-building.jpg"} alt="User" referrerPolicy="no-referrer" className="w-full h-full object-contain" />
           </div>
         </div>
       </header>
@@ -759,19 +775,31 @@ export default function App() {
           <AnimatePresence>
             {mode === 'public' && messages.length === 0 && (
               <>
-                {/* Hover Trigger Area */}
+                {/* Hover/Click Trigger Area */}
                 <div 
                   className="fixed left-0 top-24 bottom-24 w-8 z-40 cursor-pointer group"
                   onMouseEnter={() => setIsEventsOpen(true)}
+                  onClick={() => setIsEventsPinnedOpen(v => !v)}
                 >
                   <div className="h-full w-1 bg-accent/20 group-hover:bg-accent/50 transition-colors rounded-full ml-2" />
                 </div>
+
+                {/* Mobile backdrop to close */}
+                {(isEventsPinnedOpen || isEventsOpen) && (
+                  <div
+                    className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px] lg:hidden"
+                    onClick={() => {
+                      setIsEventsPinnedOpen(false);
+                      setIsEventsOpen(false);
+                    }}
+                  />
+                )}
 
                 {/* The Sidebar Overlay */}
                 <motion.div 
                   initial={{ x: -300, opacity: 0 }}
                   animate={{ 
-                    x: isEventsOpen ? 0 : -280, 
+                    x: (isEventsPinnedOpen || isEventsOpen) ? 0 : -280, 
                     opacity: 1 
                   }}
                   onMouseLeave={() => setIsEventsOpen(false)}
@@ -780,7 +808,21 @@ export default function App() {
                 >
                   <div className="flex items-center justify-between px-1">
                     <h3 className="text-[10px] uppercase tracking-[0.3em] text-accent font-bold">Upcoming Events</h3>
-                    <Sparkles className="w-3 h-3 text-accent animate-pulse" />
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-3 h-3 text-accent animate-pulse" />
+                      <button
+                        type="button"
+                        className="lg:hidden p-1.5 rounded-lg hover:bg-white/10 text-stone-400 hover:text-white"
+                        onClick={() => {
+                          setIsEventsPinnedOpen(false);
+                          setIsEventsOpen(false);
+                        }}
+                        aria-label="Close events panel"
+                        title="Close"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                   <div className="flex-1 overflow-y-auto space-y-5 lg:space-y-6 pr-2 scrollbar-hide">
                     {/* Three Pillars Section */}
@@ -889,7 +931,7 @@ export default function App() {
             ) : (
               <div 
                 ref={scrollRef}
-                className="flex-1 overflow-y-auto space-y-6 sm:space-y-8 pr-2 sm:pr-4 scrollbar-hide"
+                className="flex-1 overflow-y-auto space-y-6 sm:space-y-8 pr-2 sm:pr-4 scrollbar-hide pb-32"
               >
                 <AnimatePresence initial={false}>
                   {messages.map((message) => (
@@ -951,7 +993,8 @@ export default function App() {
             )}
 
             {/* Input Area */}
-            <div className="mt-4 sm:mt-6 relative">
+            <div className="sticky bottom-0 mt-4 sm:mt-6 relative w-full max-w-3xl px-2 sm:px-0 pb-2 sm:pb-0">
+              <div className="absolute inset-x-0 bottom-full h-10 bg-gradient-to-t from-[#05020a] to-transparent pointer-events-none" />
               {/* Image Size Selection Affordance - Internal Only */}
               {mode === 'internal' && (
                 <div className="absolute bottom-full mb-3 right-0 flex items-center gap-2 p-1.5 glass rounded-xl">
