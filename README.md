@@ -15,7 +15,6 @@ View your app in AI Studio: https://ai.studio/apps/70149557-1599-445b-9e40-91b54
 
 1. Install dependencies:
    `npm install`
-2. Copy `firebase-applet-config.example.json` to `firebase-applet-config.json` and add your Firebase web app values (from the Firebase console).
-3. Copy `.env.example` to `.env` and set `GEMINI_API_KEY` and any Google OAuth variables you use.
-4. Run the app:
+2. Copy `.env.example` to `.env` and fill in values. **Firebase client config** must use the `VITE_FIREBASE_*` keys (from Firebase Console → Project settings → Your apps). On Vercel, add the same variables under Project → Settings → Environment Variables.
+3. Run the app:
    `npm run dev`
