@@ -6,23 +6,24 @@ import { google } from "googleapis";
 import session from "express-session";
 import cookieParser from "cookie-parser";
 
+const isProduction = process.env.NODE_ENV === "production";
+
+/** Max characters injected into the model from a single Drive file */
+const DRIVE_TEXT_MAX_CHARS = 120_000;
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
-  const isProduction = process.env.NODE_ENV === "production";
+
+  if (isProduction) {
+    app.set("trust proxy", 1);
+  }
 
   app.use(express.json());
   app.use(cookieParser());
-  if (isProduction) {
-    // Required when running behind a reverse proxy (Vercel/Cloud Run/etc.)
-    app.set("trust proxy", 1);
-  }
-  // 1. Session Configuration
-  // - Local dev: secure cookies are rejected on http://localhost.
-  // - Prod: use SameSite=None + Secure for iframe compatibility over HTTPS.
   app.use(
     session({
-      secret: process.env.SESSION_SECRET || "passage-dev-secret",
+      secret: process.env.SESSION_SECRET || "passage-theatre-dev-session-change-me",
       resave: false,
       saveUninitialized: false,
       proxy: isProduction,
@@ -30,7 +31,7 @@ async function startServer() {
         secure: isProduction,
         sameSite: isProduction ? "none" : "lax",
         httpOnly: true,
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week
+        maxAge: 1000 * 60 * 60 * 24 * 7,
       },
     })
   );
@@ -205,39 +206,73 @@ async function startServer() {
 
     try {
       const fileId = req.params.fileId;
-      // First fetch metadata so we can export Google Docs types.
-      const meta = await drive.files.get({
+      const response = await drive.files.get({
         fileId,
-        fields: "id,name,mimeType,size",
+        alt: "media",
       });
-      const mimeType = meta.data.mimeType || "";
-
-      // Google Workspace files must be exported.
-      const isGoogleDoc = mimeType.startsWith("application/vnd.google-apps.");
-      if (isGoogleDoc) {
-        let exportMimeType = "text/plain";
-        if (mimeType === "application/vnd.google-apps.spreadsheet") {
-          exportMimeType = "text/csv";
-        } else if (mimeType === "application/vnd.google-apps.presentation") {
-          exportMimeType = "text/plain";
-        }
-        const exported = await drive.files.export(
-          { fileId, mimeType: exportMimeType },
-          { responseType: "text" as any }
-        );
-        res.setHeader("Content-Type", `${exportMimeType}; charset=utf-8`);
-        res.setHeader("Cache-Control", "no-store");
-        return res.send(exported.data as any);
-      }
-
-      // Regular files can be downloaded directly.
-      const downloaded = await drive.files.get({ fileId, alt: "media" }, { responseType: "text" as any });
-      res.setHeader("Content-Type", "text/plain; charset=utf-8");
-      res.setHeader("Cache-Control", "no-store");
-      res.send(downloaded.data as any);
+      res.send(response.data);
     } catch (error) {
       console.error("Drive API error:", error);
       res.status(500).json({ error: "Failed to fetch file content" });
+    }
+  });
+
+  /** Plain text for Gemini context: exports Google Docs/Sheets, reads text/* and small JSON */
+  app.get("/api/drive/file/:fileId/text", async (req, res) => {
+    const tokens = (req.session as any).tokens;
+    if (!tokens) return res.status(401).json({ error: "Not authenticated" });
+
+    const client = createOAuthClient();
+    client.setCredentials(tokens);
+    const drive = google.drive({ version: "v3", auth: client });
+    const fileId = req.params.fileId;
+
+    try {
+      const meta = await drive.files.get({
+        fileId,
+        fields: "id, name, mimeType",
+      });
+      const name = meta.data.name || fileId;
+      const mime = meta.data.mimeType || "";
+
+      let text = "";
+
+      if (mime === "application/vnd.google-apps.document") {
+        const exported = await drive.files.export(
+          { fileId, mimeType: "text/plain" },
+          { responseType: "arraybuffer" }
+        );
+        text = Buffer.from(exported.data as ArrayBuffer).toString("utf8");
+      } else if (mime === "application/vnd.google-apps.spreadsheet") {
+        const exported = await drive.files.export(
+          { fileId, mimeType: "text/csv" },
+          { responseType: "arraybuffer" }
+        );
+        text = Buffer.from(exported.data as ArrayBuffer).toString("utf8");
+      } else if (mime.startsWith("text/") || mime === "application/json") {
+        const media = await drive.files.get(
+          { fileId, alt: "media" },
+          { responseType: "arraybuffer" }
+        );
+        text = Buffer.from(media.data as ArrayBuffer).toString("utf8");
+      } else {
+        return res.json({
+          name,
+          mimeType: mime,
+          text: `[File type not inlined for AI context (${mime || "unknown"}). Use a Google Doc or plain text file, or paste an excerpt.]`,
+          unsupported: true,
+        });
+      }
+
+      const truncated = text.length > DRIVE_TEXT_MAX_CHARS;
+      if (truncated) {
+        text = text.slice(0, DRIVE_TEXT_MAX_CHARS) + "\n\n[Truncated for length]";
+      }
+
+      res.json({ name, mimeType: mime, text, truncated });
+    } catch (error: any) {
+      console.error("Drive text export error:", error);
+      res.status(500).json({ error: error?.message || "Failed to read file as text" });
     }
   });
 

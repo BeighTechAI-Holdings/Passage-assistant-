@@ -100,24 +100,6 @@ export default function App() {
   const PUBLIC_FOLDER_ID = '1SGoxWRv2WE_SKy4MwJhCl3A6nSy2KGwS';
   const INTERNAL_FOLDER_IDS = ['1l3KRkEaOKsVJLizriswqHn-whyc93aUk', '1j07-wxP7u9r9Y-V4ootX4KN3XB3YY0X4'];
 
-  const MAX_DRIVE_CONTEXT_CHARS = 20_000;
-  const fetchSelectedDriveFileText = async (fileId: string) => {
-    try {
-      const res = await fetch(`/api/drive/file/${encodeURIComponent(fileId)}`);
-      if (!res.ok) {
-        const msg = await res.text().catch(() => '');
-        throw new Error(msg || `Failed to fetch drive file (${res.status})`);
-      }
-      const text = await res.text();
-      if (!text) return '';
-      if (text.length <= MAX_DRIVE_CONTEXT_CHARS) return text;
-      return text.slice(0, MAX_DRIVE_CONTEXT_CHARS) + '\n\n[Truncated: file too large]';
-    } catch (e) {
-      console.error('[Drive] Failed to read selected file', e);
-      return '[Error: could not read file content]';
-    }
-  };
-
   useEffect(() => {
     if (!auth) return;
 
@@ -145,11 +127,13 @@ export default function App() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const onResize = () => {
-      if (window.innerWidth >= 1024) setIsEventsPinnedOpen(false);
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const sync = () => {
+      if (mq.matches) setIsEventsPinnedOpen(false);
     };
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
   }, []);
 
   const fetchSessions = (uid: string) => {
@@ -694,11 +678,19 @@ export default function App() {
           };
         }
 
-        let driveContext: string | undefined = undefined;
-        if (mode === 'internal' && selectedDriveFile?.id) {
-          const content = await fetchSelectedDriveFileText(selectedDriveFile.id);
-          const safeName = selectedDriveFile?.name ? String(selectedDriveFile.name) : 'Selected file';
-          driveContext = `CONTENT FROM GOOGLE DRIVE FILE (${safeName}):\n\n${content}`;
+        let driveContext: string | undefined;
+        if (mode === 'internal' && selectedDriveFile && isAuthenticated) {
+          try {
+            const dr = await fetch(`/api/drive/file/${encodeURIComponent(selectedDriveFile.id)}/text`);
+            if (dr.ok) {
+              const data = await dr.json();
+              driveContext = `CONTENT FROM GOOGLE DRIVE FILE (${data.name}):\n\n${data.text}`;
+            } else {
+              driveContext = `Could not load Drive file (“${selectedDriveFile.name}”). Re-login if needed.`;
+            }
+          } catch {
+            driveContext = '[Error: Could not read file from Drive]';
+          }
         }
 
         const history = messages.map(m => ({
@@ -907,23 +899,31 @@ export default function App() {
       <main className="relative z-10 flex-1 min-h-0 flex flex-col max-w-6xl mx-auto w-full px-2 sm:px-4 py-4 sm:py-8 overflow-hidden">
         <div className="flex-1 min-h-0 flex gap-4 sm:gap-6 overflow-hidden relative">
           
-          {/* Sidebar for Chat History (Mobile Overlay / Desktop Sidebar for Internal) */}
+          {/* History + Drive: overlay only (no persistent desktop column) */}
           <AnimatePresence>
-            {(isSidebarOpen || (typeof window !== 'undefined' && window.innerWidth >= 1024)) && (
-              <motion.div 
+            {mode === 'internal' && isSidebarOpen && (
+              <>
+                <motion.div
+                  key="internal-history-backdrop"
+                  role="presentation"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:bg-black/40"
+                  onClick={() => setIsSidebarOpen(false)}
+                />
+              <motion.div
+                key="internal-history-panel"
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className={`
-                  ${isSidebarOpen ? 'fixed inset-y-0 left-0 z-50 w-72 bg-[#05020a] p-6' : 'hidden lg:flex w-64 p-4'}
-                  glass rounded-r-3xl lg:rounded-3xl flex flex-col gap-4 overflow-hidden
-                  ${(!isSidebarOpen && mode !== 'internal') ? 'lg:opacity-0 lg:pointer-events-none' : ''}
-                `}
+                className="fixed inset-y-0 left-0 z-50 flex w-[min(18rem,92vw)] flex-col gap-4 overflow-hidden bg-[#05020a] p-6 glass rounded-r-3xl"
               >
-                {/* Keep sidebar width reserved on desktop to prevent center jump when toggling modes */}
                 <div className="flex items-center justify-between px-2">
                   <h3 className="text-[10px] uppercase tracking-[0.2em] text-stone-500 font-semibold">History</h3>
-                  <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-stone-500"><X className="w-4 h-4" /></button>
+                  <button type="button" onClick={() => setIsSidebarOpen(false)} className="rounded-lg p-1 text-stone-500 hover:bg-white/10 hover:text-white" aria-label="Close history">
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
 
                 <button 
@@ -1007,6 +1007,7 @@ export default function App() {
                   </div>
                 )}
               </motion.div>
+              </>
             )}
           </AnimatePresence>
 
@@ -1017,7 +1018,7 @@ export default function App() {
                 {/* Hover/Click Trigger Area */}
                 <button
                   type="button"
-                  className="fixed left-0 top-24 bottom-24 w-12 z-[5] cursor-pointer group focus:outline-none"
+                  className="fixed left-0 top-24 bottom-24 w-12 z-[61] cursor-pointer group focus:outline-none"
                   onMouseEnter={() => setIsEventsOpen(true)}
                   onClick={() => setIsEventsPinnedOpen(v => !v)}
                   aria-label="Open Upcoming Events"
@@ -1034,7 +1035,7 @@ export default function App() {
                 {/* Mobile backdrop to close */}
                 {(isEventsPinnedOpen || isEventsOpen) && (
                   <div
-                    className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px] lg:hidden"
+                    className="fixed inset-0 z-[55] bg-black/40 backdrop-blur-[1px] lg:hidden"
                     onClick={() => {
                       setIsEventsPinnedOpen(false);
                       setIsEventsOpen(false);
@@ -1042,16 +1043,17 @@ export default function App() {
                   />
                 )}
 
-                {/* The Sidebar Overlay */}
+                {/* The Sidebar Overlay — closed state must use full width + left offset; fixed -280px left a ~24px sliver on lg:w-72 */}
                 <motion.div 
-                  initial={{ x: -300, opacity: 0 }}
-                  animate={{ 
-                    x: (isEventsPinnedOpen || isEventsOpen) ? 0 : -280, 
-                    opacity: 1 
+                  initial={false}
+                  animate={{
+                    x: (isEventsPinnedOpen || isEventsOpen) ? 0 : "calc(-100% - 1rem)",
+                    opacity: 1,
                   }}
                   onMouseLeave={() => setIsEventsOpen(false)}
-                  transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                  className="fixed left-4 top-24 bottom-24 z-50 w-64 lg:w-72 glass rounded-3xl p-4 lg:p-5 flex flex-col gap-4 lg:gap-5 overflow-hidden border border-white/10 shadow-2xl backdrop-blur-xl"
+                  transition={{ type: "spring", damping: 28, stiffness: 260 }}
+                  style={{ willChange: "transform" }}
+                  className="fixed left-4 top-24 bottom-24 z-[60] w-64 lg:w-72 max-w-[min(18rem,calc(100vw-2rem))] glass rounded-3xl p-4 lg:p-5 flex flex-col gap-4 lg:gap-5 overflow-hidden border border-white/10 shadow-2xl backdrop-blur-xl"
                 >
                   <div className="flex items-center justify-between px-1">
                     <h3 className="text-[10px] uppercase tracking-[0.3em] text-accent font-bold">Upcoming Events</h3>
