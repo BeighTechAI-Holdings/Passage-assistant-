@@ -716,7 +716,7 @@ export default function App() {
   };
 
   return (
-    <div className="relative h-[100dvh] w-screen overflow-hidden flex flex-col min-h-0">
+    <div className="relative min-h-screen h-[100svh] [height:100dvh] w-screen overflow-hidden flex flex-col min-h-0">
       {/* Background Atmosphere */}
       <div className="fixed inset-0 z-0 atmosphere pointer-events-none" />
       
@@ -1262,32 +1262,32 @@ export default function App() {
       </main>
 
       {/* Footer Decoration */}
-      <footer className="hidden sm:flex relative z-10 px-8 py-6 flex-col sm:flex-row justify-between items-center gap-6 border-t border-white/5 bg-black/20 backdrop-blur-sm shrink-0">
+      <footer className="relative z-10 px-4 sm:px-8 py-3 sm:py-6 flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-6 border-t border-white/5 bg-black/20 backdrop-blur-sm shrink-0 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:pb-6">
         <div className="flex flex-col items-center sm:items-start gap-4">
           <span className="text-[10px] uppercase tracking-widest text-stone-500">&copy; 2026 Passage Theatre Company</span>
           <div className="flex flex-wrap items-center gap-4 justify-center sm:justify-start">
             <img 
               src="https://static.wixstatic.com/media/f5611b_7510767165fa4d41a3e6f648576b45f4~mv2.png/v1/fill/w_284,h_90,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/PassagelogoresetWHITE(1)(2).png" 
               alt="Passage Logo" 
-              className="h-10 opacity-80 hover:opacity-100 transition-opacity"
+              className="h-8 sm:h-10 opacity-80 hover:opacity-100 transition-opacity"
               referrerPolicy="no-referrer"
             />
             <img 
               src="https://static.wixstatic.com/media/f5611b_e2e51aa273424cbeaaff2cdf18bb44ac~mv2.png/v1/fill/w_192,h_114,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Trenton%20Premieres.png" 
               alt="Trenton Premieres" 
-              className="h-8 opacity-60 hover:opacity-100 transition-opacity grayscale hover:grayscale-0"
+              className="h-7 sm:h-8 opacity-60 hover:opacity-100 transition-opacity grayscale hover:grayscale-0"
               referrerPolicy="no-referrer"
             />
             <img 
               src="https://static.wixstatic.com/media/f5611b_da92e1d28bf64ee38e9d6418f0c657c3~mv2.png/v1/fill/w_230,h_132,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Trenton%20Makes.png" 
               alt="Trenton Makes" 
-              className="h-8 opacity-60 hover:opacity-100 transition-opacity grayscale hover:grayscale-0"
+              className="h-7 sm:h-8 opacity-60 hover:opacity-100 transition-opacity grayscale hover:grayscale-0"
               referrerPolicy="no-referrer"
             />
             <img 
               src="https://static.wixstatic.com/media/f5611b_04ad1e5a26904b49949ec678966a1034~mv2.png/v1/fill/w_230,h_132,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Trenton%20Presents.png" 
               alt="Trenton Presents" 
-              className="h-8 opacity-60 hover:opacity-100 transition-opacity grayscale hover:grayscale-0"
+              className="h-7 sm:h-8 opacity-60 hover:opacity-100 transition-opacity grayscale hover:grayscale-0"
               referrerPolicy="no-referrer"
             />
           </div>
