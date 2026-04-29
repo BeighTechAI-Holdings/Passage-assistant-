@@ -1031,7 +1031,8 @@ export default function App() {
               const data = dataLines.join('\n');
               if (eventName === 'delta') {
                 accumulated += data;
-                setStreamDraft(accumulated);
+                // Render deltas immediately for Claude-like streaming (don't rely on the Gemini typewriter loop).
+                setStreamRevealText(accumulated);
               } else if (eventName === 'citations') {
                 try {
                   const parsed = JSON.parse(data);
@@ -1051,7 +1052,6 @@ export default function App() {
             parseSse(decoder.decode(value, { stream: true }));
           }
 
-          setStreamRevealText(accumulated || '');
           setStreamDraft(null);
 
           let finalText = (accumulated || '').trim();
@@ -1078,6 +1078,10 @@ export default function App() {
 
           responseContent = response || "I'm sorry, I couldn't process that.";
         }
+
+        // Prevent double-rendering while Firestore snapshots refresh after persistence.
+        setStreamRevealText('');
+        setStreamDraft(null);
 
         if (currentUser && sessionId) {
           await addDoc(collection(db, 'users', currentUser.uid, 'sessions', sessionId, 'messages'), {
