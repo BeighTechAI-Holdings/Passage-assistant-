@@ -1,6 +1,5 @@
 import "./nodePdfPolyfills.js";
 import type { drive_v3 } from "googleapis";
-import { PDFParse } from "pdf-parse";
 import mammoth from "mammoth";
 
 export const EXTRACT_MAX_CHARS = 250_000;
@@ -45,6 +44,7 @@ export async function extractTextFromDriveFile(
     try {
       const media = await drive.files.get({ fileId: id, alt: "media" }, { responseType: "arraybuffer" });
       const buffer = Buffer.from(media.data as ArrayBuffer);
+      const { PDFParse } = await import("pdf-parse");
       const parser = new PDFParse({ data: buffer });
       try {
         const data = await parser.getText();
@@ -58,10 +58,15 @@ export async function extractTextFromDriveFile(
       return { text: "", truncated: false, unsupported: true };
     }
   } else if (mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
-    const media = await drive.files.get({ fileId: id, alt: "media" }, { responseType: "arraybuffer" });
-    const buffer = Buffer.from(media.data as ArrayBuffer);
-    const data = await mammoth.extractRawText({ buffer });
-    text = data.value || "";
+    try {
+      const media = await drive.files.get({ fileId: id, alt: "media" }, { responseType: "arraybuffer" });
+      const buffer = Buffer.from(media.data as ArrayBuffer);
+      const data = await mammoth.extractRawText({ buffer });
+      text = data.value || "";
+    } catch (err) {
+      console.warn("[driveExtract] DOCX parsing skipped:", file.name || id, err);
+      return { text: "", truncated: false, unsupported: true };
+    }
   } else {
     return { text: "", truncated: false, unsupported: true };
   }
