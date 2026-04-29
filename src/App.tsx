@@ -766,31 +766,50 @@ export default function App() {
     if ((!input.trim() && !selectedImage) || isLoading) return;
 
     let sessionId = currentSessionId;
+    let sessionEnsureFailed = false;
     if (!sessionId && currentUser && db) {
       // Auto-create session if none exists
-      const user = currentUser;
-      const sessionData = {
-        userId: user.uid,
-        mode: mode,
-        title: input.slice(0, 30) + (input.length > 30 ? '...' : ''),
-        createdAt: serverTimestamp(),
-        lastMessageAt: serverTimestamp()
-      };
-      const docRef = await addDoc(collection(db, 'users', user.uid, 'sessions'), sessionData);
-      sessionId = docRef.id;
-      setCurrentSessionId(sessionId);
+      try {
+        const user = currentUser;
+        const sessionData = {
+          userId: user.uid,
+          mode: mode,
+          title: input.slice(0, 30) + (input.length > 30 ? '...' : ''),
+          createdAt: serverTimestamp(),
+          lastMessageAt: serverTimestamp()
+        };
+        const docRef = await addDoc(collection(db, 'users', user.uid, 'sessions'), sessionData);
+        sessionId = docRef.id;
+        setCurrentSessionId(sessionId);
+      } catch (err: any) {
+        console.error('[Firestore] Failed to create chat session:', err);
+        sessionEnsureFailed = true;
+        alert(
+          `Could not create a chat session in Firestore (${err?.code || err?.message || 'unknown'}).\n\n` +
+            `This usually means Firestore rules/database access isn't configured for this Firebase project.\n\n` +
+            `You can keep chatting locally for now — responses may not persist across refreshes.`
+        );
+      }
     }
 
     const userMessageContent = input;
     const userMessageImage = selectedImage?.preview;
 
-    if (db && currentUser && sessionId) {
-      await addDoc(collection(db, 'users', currentUser.uid, 'sessions', sessionId, 'messages'), {
-        role: 'user',
-        content: userMessageContent,
-        image: userMessageImage || null,
-        timestamp: serverTimestamp()
-      });
+    if (db && currentUser && sessionId && !sessionEnsureFailed) {
+      try {
+        await addDoc(collection(db, 'users', currentUser.uid, 'sessions', sessionId, 'messages'), {
+          role: 'user',
+          content: userMessageContent,
+          image: userMessageImage || null,
+          timestamp: serverTimestamp()
+        });
+      } catch (err: any) {
+        console.error('[Firestore] Failed to save user message:', err);
+        alert(
+          `Could not save your message to Firestore (${err?.code || err?.message || 'unknown'}).\n\n` +
+            `Continuing with local-only chat so Send still works.`
+        );
+      }
     } else {
       // Local state for guests
       const userMessage: Message = {
