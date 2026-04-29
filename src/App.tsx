@@ -106,6 +106,7 @@ export default function App() {
   /** Visible text during stream — advances word-by-word toward `streamDraft` for a typewriter feel. */
   const [streamRevealText, setStreamRevealText] = useState('');
   const streamTargetRef = useRef('');
+  const [isComposerFocused, setIsComposerFocused] = useState(false);
 
   /** Invalidates in-flight `/api/auth/status` results so a slow initial fetch cannot overwrite state after login sets the cookie. */
   const authCheckSeq = useRef(0);
@@ -201,6 +202,24 @@ export default function App() {
     sync();
     mq.addEventListener('change', sync);
     return () => mq.removeEventListener('change', sync);
+  }, []);
+
+  // Stabilize mobile layout when the on-screen keyboard opens by sizing the app
+  // to the visual viewport height (iOS Safari especially).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const vv = window.visualViewport;
+    const setAppHeight = () => {
+      const h = vv?.height || window.innerHeight;
+      document.documentElement.style.setProperty('--app-height', `${Math.round(h)}px`);
+    };
+    setAppHeight();
+    vv?.addEventListener('resize', setAppHeight);
+    window.addEventListener('resize', setAppHeight);
+    return () => {
+      vv?.removeEventListener('resize', setAppHeight);
+      window.removeEventListener('resize', setAppHeight);
+    };
   }, []);
 
   const fetchSessions = (uid: string) => {
@@ -973,7 +992,10 @@ export default function App() {
   };
 
   return (
-    <div className="relative min-h-screen h-[100svh] [height:100dvh] w-screen overflow-hidden flex flex-col min-h-0">
+    <div
+      className="relative w-screen overflow-hidden flex flex-col min-h-0"
+      style={{ height: 'var(--app-height, 100dvh)' } as any}
+    >
       {/* Background Atmosphere */}
       <div className="fixed inset-0 z-0 atmosphere pointer-events-none" />
       
@@ -1383,8 +1405,9 @@ export default function App() {
                   </p>
                 </motion.div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 w-full max-w-2xl">
-                  {(mode === 'public' ? [
+                {!isComposerFocused && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 w-full max-w-2xl">
+                    {(mode === 'public' ? [
                     "Tell me about 'Season 41'",
                     "What's the theme of the current season?",
                     "Where is Mill Hill Playhouse?",
@@ -1404,13 +1427,14 @@ export default function App() {
                       <p className="font-medium">{suggestion}</p>
                     </button>
                   ))}
-                </div>
+                  </div>
+                )}
                 </div>
               </div>
             ) : (
               <div
                 ref={scrollRef}
-                className="flex-1 min-h-0 w-full max-w-4xl mx-auto overflow-y-auto overflow-x-hidden space-y-6 sm:space-y-8 pr-2 sm:pr-4 scrollbar-hide"
+                className="flex-1 min-h-0 w-full max-w-4xl mx-auto overflow-y-auto overflow-x-hidden space-y-6 sm:space-y-8 pr-2 sm:pr-4 scrollbar-hide pb-28 sm:pb-32"
               >
                 <AnimatePresence initial={false}>
                   {messages.map((message) => (
@@ -1517,7 +1541,7 @@ export default function App() {
             )}
 
             {/* Input Area */}
-            <div className="mt-2 sm:mt-4 relative w-full max-w-4xl px-2 sm:px-0 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] sm:pb-0">
+            <div className="sticky bottom-0 w-full max-w-4xl px-2 sm:px-0 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] sm:pb-0 pt-2 sm:pt-4 bg-gradient-to-t from-[#05020a] via-[#05020a]/80 to-transparent">
               {selectedImage && (
                 <div className="absolute bottom-full mb-3 left-0 flex items-center gap-2 p-2 glass rounded-xl">
                   <img src={selectedImage.preview} alt="Preview" className="w-10 h-10 object-cover rounded-lg" />
@@ -1537,6 +1561,12 @@ export default function App() {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     disabled={mode === 'internal' && !currentUser}
+                    onFocus={() => {
+                      setIsComposerFocused(true);
+                      setIsEventsPinnedOpen(false);
+                      setIsEventsOpen(false);
+                    }}
+                    onBlur={() => setIsComposerFocused(false)}
                     onKeyDown={(e) => {
                       const isEnter = e.key === 'Enter' || e.code === 'Enter' || e.code === 'NumpadEnter';
                       if (isEnter && !e.shiftKey) {
