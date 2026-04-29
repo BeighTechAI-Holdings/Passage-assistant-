@@ -1,3 +1,4 @@
+import "./nodePdfPolyfills.js";
 import type { drive_v3 } from "googleapis";
 import { PDFParse } from "pdf-parse";
 import mammoth from "mammoth";
