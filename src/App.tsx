@@ -1119,157 +1119,170 @@ export default function App() {
   };
 
   return (
-    <div className="relative min-h-screen h-[100svh] [height:100dvh] w-screen overflow-hidden flex flex-col min-h-0">
+    <div className="relative flex h-[100svh] min-h-0 w-screen flex-col overflow-hidden bg-[#0a0a0a] [height:100dvh]">
       {/* Background Atmosphere */}
       <div className="fixed inset-0 z-0 atmosphere pointer-events-none" />
       
       {/* Header */}
-      <header className="relative z-[100] flex items-center justify-between px-4 sm:px-8 py-3 sm:py-4 border-b border-white/5 backdrop-blur-md shrink-0">
-        <div className="flex items-center gap-2 sm:gap-3">
-          <button
-            type="button"
-            onClick={() => window.open('https://www.passagetheatre.org', '_blank', 'noopener,noreferrer')}
-            className="w-9 h-9 sm:w-12 sm:h-12 rounded-full border-2 border-accent/30 flex items-center justify-center overflow-hidden bg-stone-900 shadow-[0_0_20px_rgba(139,92,246,0.2)] cursor-pointer transition-transform hover:scale-[1.03] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-accent/60"
-            aria-label="Open Passage Theatre website"
-            title="Open Passage Theatre"
-          >
-            <img 
-              src="/passage.jpeg" 
-              alt="Passage Logo" 
-              referrerPolicy="no-referrer" 
-              className="w-full h-full object-contain" 
-            />
-          </button>
-          <div className="hidden xs:block">
-            <h1 className="text-base sm:text-xl font-medium tracking-tight text-white leading-none">Passage</h1>
-            <p className="text-[7px] sm:text-[9px] uppercase tracking-[0.3em] text-accent font-bold mt-1">Theatre Assistant</p>
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-2 sm:gap-3 scale-90 sm:scale-100">
-          {mode === 'public' && (
+      <header className="relative z-[100] shrink-0 border-b border-white/10 bg-stone-950/25 px-4 py-3 backdrop-blur-md sm:px-8 sm:py-3.5">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             <button
               type="button"
-              onClick={exitChat}
-              className="p-2 text-stone-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-accent/60 rounded-full"
-              title="Home"
-              aria-label="Home — return to start"
+              onClick={() => window.open('https://www.passagetheatre.org', '_blank', 'noopener,noreferrer')}
+              className="h-9 w-9 shrink-0 cursor-pointer overflow-hidden rounded-full border border-accent/35 bg-stone-900/80 shadow-[0_0_18px_rgba(139,92,246,0.18)] transition-transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-accent/50 active:scale-[0.98] sm:h-11 sm:w-11"
+              aria-label="Open Passage Theatre website"
+              title="Open Passage Theatre"
             >
-              <Home className="w-4 h-4 sm:w-5 sm:h-5" />
+              <img
+                src="/passage.jpeg"
+                alt="Passage Logo"
+                referrerPolicy="no-referrer"
+                className="h-full w-full object-contain"
+              />
             </button>
-          )}
-          {currentUser ? (
-            <div
-              className="flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-full border border-accent/30 bg-accent/10 text-[8px] sm:text-[10px] uppercase tracking-widest text-accent"
-              title="Signed in — staff workspace"
-            >
-              <Lock className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-              <span className="hidden xs:inline">Internal workspace</span>
+            <div className="hidden min-w-0 xs:block">
+              <h1 className="text-sm font-medium leading-none tracking-tight text-white sm:text-base">Passage</h1>
+              <p className="mt-0.5 text-[7px] font-bold uppercase tracking-[0.28em] text-accent/90 sm:text-[8px]">
+                Theatre Assistant
+              </p>
             </div>
-          ) : (
-            <div className="flex items-center gap-1 sm:gap-2 p-1 bg-white/5 rounded-full border border-white/10">
-              <button
-                type="button"
-                onClick={() => setMode('public')}
-                className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1 sm:py-1.5 rounded-full text-[8px] sm:text-[10px] uppercase tracking-widest transition-all ${
-                  mode === 'public' ? 'bg-accent text-white' : 'text-stone-400 hover:text-white'
-                }`}
+            {currentUser ? (
+              <div
+                className="ml-0.5 flex shrink-0 items-center gap-1 rounded-full border border-accent/25 bg-accent/[0.07] px-2 py-0.5 sm:ml-1 sm:px-2.5 sm:py-1"
+                title="Signed in — staff workspace"
               >
-                <Globe className="w-2.5 h-2.5 sm:w-3 sm:h-3" /> <span className="hidden xs:inline">Public</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode('internal')}
-                className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1 sm:py-1.5 rounded-full text-[8px] sm:text-[10px] uppercase tracking-widest transition-all ${
-                  mode === 'internal' ? 'bg-accent text-white' : 'text-stone-400 hover:text-white'
-                }`}
-              >
-                <Lock className="w-2.5 h-2.5 sm:w-3 sm:h-3" /> <span className="hidden xs:inline">Internal</span>
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2 sm:gap-4">
-          <button
-            type="button"
-            onClick={resetConversation}
-            className="flex items-center gap-2 p-2 hover:bg-white/10 rounded-xl text-stone-400"
-            title="New chat"
-            aria-label="New chat"
-          >
-            <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="hidden sm:inline text-[10px] uppercase tracking-widest">New</span>
-          </button>
-          {mode === 'internal' && (
-            <button 
-              type="button"
-              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="flex items-center gap-2 p-2 hover:bg-white/10 rounded-xl text-stone-400"
-              title="Chat history"
-              aria-label="Chat history"
-            >
-              <History className="w-4 h-4 sm:w-5 sm:h-5" />
-              <span className="hidden sm:inline text-[10px] uppercase tracking-widest">History</span>
-            </button>
-          )}
-          {mode === 'internal' && (!currentUser || !isAuthenticated) && (
-            <button
-              type="button"
-              onClick={handleGoogleLogin}
-              disabled={isLoggingIn}
-              className="flex items-center gap-2 px-2.5 py-1.5 sm:px-4 sm:py-2 bg-white/10 hover:bg-white/20 rounded-xl text-[9px] sm:text-xs transition-all disabled:opacity-50"
-            >
-              {isLoggingIn ? <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" /> : <LogIn className="w-3 h-3 sm:w-4 sm:h-4" />}
-              <span className="hidden sm:inline">
-                {isLoggingIn
-                  ? 'Connecting...'
-                  : currentUser
-                    ? 'Connect Drive'
-                    : 'Login'}
-              </span>
-            </button>
-          )}
-          <div className="relative z-[110]">
-            <button
-              type="button"
-              onClick={() => setIsAccountMenuOpen(v => !v)}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-white/10 flex items-center justify-center overflow-hidden hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-accent/60"
-              aria-label={currentUser ? "Account menu" : "Profile"}
-              title={currentUser ? "Account" : "Profile"}
-            >
-              <img src={currentUser?.photoURL || "/passage-building.jpg"} alt="User" referrerPolicy="no-referrer" className="w-full h-full object-contain" />
-            </button>
-
-            {isAccountMenuOpen && currentUser && (
-              <>
+                <Lock className="h-3 w-3 text-accent/90 sm:h-3.5 sm:w-3.5" aria-hidden />
+                <span className="hidden text-[7px] font-medium uppercase tracking-widest text-accent/85 xs:inline sm:text-[8px]">
+                  Internal
+                </span>
+              </div>
+            ) : (
+              <div className="ml-0.5 flex shrink-0 items-center gap-0.5 rounded-full border border-white/10 bg-white/[0.04] p-0.5 sm:ml-1">
                 <button
                   type="button"
-                  className="fixed inset-0 z-[110] cursor-default"
-                  aria-label="Close account menu"
-                  onClick={() => setIsAccountMenuOpen(false)}
+                  onClick={() => setMode('public')}
+                  className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[7px] font-medium uppercase tracking-widest transition-all sm:px-2.5 sm:py-1 sm:text-[8px] ${
+                    mode === 'public' ? 'bg-accent text-white' : 'text-stone-400 hover:bg-white/10 hover:text-white'
+                  }`}
+                >
+                  <Globe className="h-3 w-3" />
+                  <span className="hidden xs:inline">Public</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode('internal')}
+                  className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[7px] font-medium uppercase tracking-widest transition-all sm:px-2.5 sm:py-1 sm:text-[8px] ${
+                    mode === 'internal' ? 'bg-accent text-white' : 'text-stone-400 hover:bg-white/10 hover:text-white'
+                  }`}
+                >
+                  <Lock className="h-3 w-3" />
+                  <span className="hidden xs:inline">Internal</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2.5">
+            {mode === 'public' && (
+              <button
+                type="button"
+                onClick={exitChat}
+                className="rounded-full p-2 text-stone-400 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-accent/50"
+                title="Home"
+                aria-label="Home — return to start"
+              >
+                <Home className="h-4 w-4 sm:h-5 sm:w-5" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={resetConversation}
+              className="flex items-center gap-1.5 rounded-xl p-2 text-stone-400 transition-colors hover:bg-white/10 hover:text-white sm:gap-2"
+              title="New chat"
+              aria-label="New chat"
+            >
+              <Plus className="h-4 w-4 sm:h-5 sm:w-5" />
+              <span className="hidden text-[10px] font-medium uppercase tracking-widest sm:inline">New</span>
+            </button>
+            {mode === 'internal' && (
+              <button
+                type="button"
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                className="flex items-center gap-1.5 rounded-xl p-2 text-stone-400 transition-colors hover:bg-white/10 hover:text-white sm:gap-2"
+                title="Chat history"
+                aria-label="Chat history"
+              >
+                <History className="h-4 w-4 sm:h-5 sm:w-5" />
+                <span className="hidden text-[10px] font-medium uppercase tracking-widest sm:inline">History</span>
+              </button>
+            )}
+            {mode === 'internal' && (!currentUser || !isAuthenticated) && (
+              <button
+                type="button"
+                onClick={handleGoogleLogin}
+                disabled={isLoggingIn}
+                className="flex items-center gap-1.5 rounded-xl bg-white/10 px-2 py-1.5 text-[9px] transition-all hover:bg-white/15 disabled:opacity-50 sm:px-3 sm:text-[10px]"
+              >
+                {isLoggingIn ? (
+                  <Loader2 className="h-3 w-3 animate-spin sm:h-4 sm:w-4" />
+                ) : (
+                  <LogIn className="h-3 w-3 sm:h-4 sm:w-4" />
+                )}
+                <span className="hidden max-w-[7rem] truncate sm:inline">
+                  {isLoggingIn ? 'Connecting...' : currentUser ? 'Connect Drive' : 'Login'}
+                </span>
+              </button>
+            )}
+            <div className="relative z-[110]">
+              <button
+                type="button"
+                onClick={() => setIsAccountMenuOpen((v) => !v)}
+                className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-white/10 transition-colors hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-accent/50 sm:h-9 sm:w-9"
+                aria-label={currentUser ? 'Account menu' : 'Profile'}
+                title={currentUser ? 'Account' : 'Profile'}
+              >
+                <img
+                  src={currentUser?.photoURL || '/passage-building.jpg'}
+                  alt="User"
+                  referrerPolicy="no-referrer"
+                  className="h-full w-full object-contain"
                 />
-                <div className="absolute right-0 mt-2 z-[120] min-w-44 glass rounded-2xl border border-white/10 shadow-2xl overflow-hidden">
-                  <div className="px-3 py-2 border-b border-white/5">
-                    <div className="text-[10px] uppercase tracking-widest text-stone-500">Signed in</div>
-                    <div className="text-xs text-white truncate">{currentUser.email || currentUser.displayName || 'Google account'}</div>
-                  </div>
+              </button>
+
+              {isAccountMenuOpen && currentUser && (
+                <>
                   <button
                     type="button"
-                    onClick={handleSignOut}
-                    className="w-full text-left px-3 py-2.5 text-xs text-stone-300 hover:bg-white/10 transition-colors"
-                  >
-                    Sign out
-                  </button>
-                </div>
-              </>
-            )}
+                    className="fixed inset-0 z-[110] cursor-default"
+                    aria-label="Close account menu"
+                    onClick={() => setIsAccountMenuOpen(false)}
+                  />
+                  <div className="absolute right-0 z-[120] mt-2 min-w-44 overflow-hidden rounded-2xl border border-white/10 bg-stone-950/90 shadow-2xl backdrop-blur-xl">
+                    <div className="border-b border-white/5 px-3 py-2">
+                      <div className="text-[10px] uppercase tracking-widest text-stone-500">Signed in</div>
+                      <div className="truncate text-xs text-white">
+                        {currentUser.email || currentUser.displayName || 'Google account'}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleSignOut}
+                      className="w-full px-3 py-2.5 text-left text-xs text-stone-300 transition-colors hover:bg-white/10"
+                    >
+                      Sign out
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </header>
 
+      <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 min-h-0 flex-col px-2 sm:px-4">
       {/* Main Content */}
-      <main className="relative z-10 flex-1 min-h-0 flex flex-col max-w-6xl mx-auto w-full px-2 sm:px-4 py-2 sm:py-4 overflow-hidden">
+      <main className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden py-2 sm:py-4">
         <div className="flex-1 min-h-0 flex gap-4 sm:gap-6 overflow-hidden relative">
           
           {/* History + Drive: overlay only (no persistent desktop column) */}
@@ -1511,25 +1524,37 @@ export default function App() {
           {/* Chat Area */}
           <div className="flex-1 min-h-0 flex flex-col overflow-hidden items-center h-full min-w-0">
             {messages.length === 0 ? (
-              <div className="flex-1 min-h-0 w-full max-w-3xl overflow-y-auto overflow-x-hidden px-4 pb-8 scrollbar-hide">
-                <div className="min-h-full flex flex-col items-center justify-center text-center space-y-6 sm:space-y-8 py-8">
+              <div className="flex min-h-0 w-full max-w-3xl flex-1 flex-col overflow-y-auto overflow-x-hidden px-4 pb-6 scrollbar-hide sm:mx-auto">
+                <div className="flex flex-1 flex-col items-center justify-center gap-6 py-6 text-center sm:gap-8 sm:py-10">
                 <motion.div 
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   className="space-y-3 sm:space-y-4"
                 >
-                  <h2 className="serif text-4xl sm:text-5xl md:text-6xl font-light italic text-white leading-tight">
-                    {mode === 'public' ? "Explore" : "Master the"} <br />
-                    <span className="text-accent">{mode === 'public' ? "Passage" : "Workflow"}</span>
+                  <h2 className="text-4xl font-light leading-tight text-white sm:text-5xl md:text-6xl">
+                    {mode === 'public' ? (
+                      <>
+                        <span className="font-editorial">Explore</span>
+                        <br />
+                        <span className="font-editorial italic text-accent">Passage</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-editorial">Master</span>{' '}
+                        <span className="font-sans font-light tracking-tight text-white/85">the</span>
+                        <br />
+                        <span className="font-editorial italic text-accent">Workflow</span>
+                      </>
+                    )}
                   </h2>
-                  <p className="text-stone-400 max-w-sm mx-auto text-xs sm:text-sm leading-relaxed">
+                  <p className="mx-auto max-w-sm font-sans text-xs leading-relaxed text-stone-400 sm:text-sm">
                     {mode === 'public' 
                       ? "Discover our current season, learn about our community programs, and find your seat at the theatre."
                       : "Connect your Drive, write grants, and streamline your internal operations."}
                   </p>
                 </motion.div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 w-full max-w-2xl">
+                <div className="mx-auto grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
                   {(mode === 'public' ? [
                     "Tell me about 'Season 41'",
                     "What's the theme of the current season?",
@@ -1544,9 +1569,9 @@ export default function App() {
                     <button
                       key={i}
                       onClick={() => setInput(suggestion)}
-                      className="glass p-3 sm:p-4 rounded-2xl text-left text-[10px] sm:text-xs text-stone-300 hover:bg-white/10 transition-all group"
+                      className="group rounded-2xl border border-white/10 bg-stone-900/40 p-3 text-left text-[10px] text-stone-300 backdrop-blur-xl transition-all hover:bg-white/10 sm:p-4 sm:text-xs"
                     >
-                      <p className="opacity-60 mb-1 group-hover:opacity-100 transition-opacity">Suggestion</p>
+                      <p className="mb-1 opacity-60 transition-opacity group-hover:opacity-100">Suggestion</p>
                       <p className="font-medium">{suggestion}</p>
                     </button>
                   ))}
@@ -1663,11 +1688,12 @@ export default function App() {
               </div>
             )}
 
-            {/* Composer lives below the transcript (in flow) so the site footer stays beneath the input */}
-            <div className="relative z-20 mt-auto shrink-0 w-full -mx-2 px-2 sm:-mx-4 sm:px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 bg-[#05020a]/95 backdrop-blur-md border-t border-white/5">
-        <div className="max-w-4xl mx-auto relative">
+            {/* Composer — glass strip above footer; aligns with max-w-4xl transcript */}
+            <div className="relative z-20 mt-auto w-full shrink-0 border-t border-white/10 bg-white/5 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 backdrop-blur-md sm:pb-3">
+              <div className="relative mx-auto w-full max-w-4xl">
+                <div className="rounded-2xl border border-white/10 bg-stone-900/40 p-2 backdrop-blur-xl sm:p-2.5">
               {selectedImage && (
-                <div className="absolute bottom-full mb-3 left-0 flex items-center gap-2 p-2 glass rounded-xl">
+                <div className="absolute bottom-full mb-3 left-0 flex items-center gap-2 rounded-xl border border-white/10 bg-stone-900/50 p-2 backdrop-blur-md">
                   <img src={selectedImage.preview} alt="Preview" className="w-10 h-10 object-cover rounded-lg" />
                   <button onClick={() => setSelectedImage(null)} className="p-1 hover:bg-white/10 rounded-full">
                     <X className="w-3 h-3 text-stone-400" />
@@ -1707,13 +1733,13 @@ export default function App() {
                             ? "Draft a grant… (Connect Drive to attach files from Drive)"
                             : "Draft a grant or analyze data..."
                     }
-                    className="w-full max-w-full rounded-2xl bg-white/[0.06] py-3.5 sm:py-4 pl-4 sm:pl-6 pr-20 sm:pr-32 text-[16px] sm:text-sm text-stone-100 placeholder:text-stone-600 shadow-none ring-1 ring-white/10 focus:outline-none focus:ring-2 focus:ring-accent/45 disabled:opacity-60 disabled:cursor-not-allowed resize-none overflow-y-auto overflow-x-hidden leading-relaxed [transform:translateZ(0)]"
+                    className="w-full max-w-full resize-none overflow-x-hidden overflow-y-auto rounded-xl border border-white/10 bg-white/5 py-3.5 pl-4 pr-20 text-[16px] leading-relaxed text-stone-100 shadow-none backdrop-blur-md placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-accent/45 disabled:cursor-not-allowed disabled:opacity-60 sm:py-4 sm:pl-6 sm:pr-32 sm:text-sm [transform:translateZ(0)]"
                   />
                   <div className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 sm:gap-1">
                     <button
                       type="button"
                       onClick={toggleListening}
-                      className={`p-1.5 sm:p-2 rounded-xl transition-all ${isListening ? 'bg-red-500/20 text-red-400 animate-pulse' : 'text-stone-500 hover:text-white hover:bg-white/5'}`}
+                      className={`rounded-xl p-1.5 transition-all sm:p-2 ${isListening ? 'animate-pulse bg-red-500/20 text-red-400' : 'text-stone-400 hover:bg-white/10 hover:text-white'}`}
                       title="Voice Input"
                     >
                       {isListening ? <MicOff className="w-3.5 h-3.5 sm:w-5 sm:h-5" /> : <Mic className="w-3.5 h-3.5 sm:w-5 sm:h-5" />}
@@ -1723,7 +1749,7 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => setIsImageSizeOpen(v => !v)}
-                          className="p-1.5 sm:p-2 rounded-xl text-stone-500 hover:text-white hover:bg-white/5 transition-all"
+                          className="rounded-xl p-1.5 text-stone-400 transition-all hover:bg-white/10 hover:text-white sm:p-2"
                           title={`Image size: ${imageSize}`}
                           aria-label="Select image size"
                         >
@@ -1758,7 +1784,7 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          className="p-1.5 sm:p-2 rounded-xl text-stone-500 hover:text-white hover:bg-white/5 transition-all"
+                          className="rounded-xl p-1.5 text-stone-400 transition-all hover:bg-white/10 hover:text-white sm:p-2"
                           title="Upload Image"
                         >
                           <ImageIcon className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
@@ -1782,17 +1808,18 @@ export default function App() {
                   <Send className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
               </form>
-        </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </main>
 
       {/* Footer Decoration */}
-      <footer className="relative z-[100] px-4 sm:px-8 py-2 sm:py-4 flex flex-col sm:flex-row justify-between items-center gap-2 sm:gap-4 border-t border-white/5 bg-black/20 backdrop-blur-sm shrink-0 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] sm:pb-4">
-        <div className="flex flex-col items-center sm:items-start gap-4">
+      <footer className="relative z-[100] flex shrink-0 flex-col gap-6 border-t border-white/10 bg-black/10 px-4 pt-4 pb-8 backdrop-blur-md sm:flex-row sm:items-end sm:justify-between sm:px-8">
+        <div className="flex flex-col items-center gap-4 sm:items-start">
           <span className="text-[10px] uppercase tracking-widest text-stone-500">&copy; 2026 Passage Theatre Company</span>
-          <div className="flex flex-wrap items-center gap-4 justify-center sm:justify-start">
+          <div className="flex flex-wrap items-center justify-center gap-4 sm:justify-start">
             <a
               href="https://www.passagetheatre.org/"
               target="_blank"
@@ -1804,7 +1831,7 @@ export default function App() {
               <img 
                 src="https://static.wixstatic.com/media/f5611b_7510767165fa4d41a3e6f648576b45f4~mv2.png/v1/fill/w_284,h_90,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/PassagelogoresetWHITE(1)(2).png" 
                 alt="Passage Theatre Company"
-                className="h-8 sm:h-10 opacity-80 hover:opacity-100 transition-opacity"
+                className="h-8 grayscale opacity-50 transition-all duration-300 hover:opacity-100 hover:grayscale-0 sm:h-10"
                 referrerPolicy="no-referrer"
               />
             </a>
@@ -1819,7 +1846,7 @@ export default function App() {
               <img 
                 src="https://static.wixstatic.com/media/f5611b_e2e51aa273424cbeaaff2cdf18bb44ac~mv2.png/v1/fill/w_192,h_114,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Trenton%20Premieres.png" 
                 alt="Trenton Premieres"
-                className="h-7 sm:h-8 opacity-60 hover:opacity-100 transition-opacity grayscale hover:grayscale-0"
+                className="h-7 grayscale opacity-50 transition-all duration-300 hover:opacity-100 hover:grayscale-0 sm:h-8"
                 referrerPolicy="no-referrer"
               />
             </a>
@@ -1834,7 +1861,7 @@ export default function App() {
               <img 
                 src="https://static.wixstatic.com/media/f5611b_da92e1d28bf64ee38e9d6418f0c657c3~mv2.png/v1/fill/w_230,h_132,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Trenton%20Makes.png" 
                 alt="Trenton Makes"
-                className="h-7 sm:h-8 opacity-60 hover:opacity-100 transition-opacity grayscale hover:grayscale-0"
+                className="h-7 grayscale opacity-50 transition-all duration-300 hover:opacity-100 hover:grayscale-0 sm:h-8"
                 referrerPolicy="no-referrer"
               />
             </a>
@@ -1849,33 +1876,34 @@ export default function App() {
               <img 
                 src="https://static.wixstatic.com/media/f5611b_04ad1e5a26904b49949ec678966a1034~mv2.png/v1/fill/w_230,h_132,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Trenton%20Presents.png" 
                 alt="Trenton Presents"
-                className="h-7 sm:h-8 opacity-60 hover:opacity-100 transition-opacity grayscale hover:grayscale-0"
+                className="h-7 grayscale opacity-50 transition-all duration-300 hover:opacity-100 hover:grayscale-0 sm:h-8"
                 referrerPolicy="no-referrer"
               />
             </a>
           </div>
         </div>
-        <div className="flex gap-6 text-[10px] uppercase tracking-widest text-stone-500">
-          <div className="flex flex-col items-center sm:items-end gap-1.5">
-            <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-stone-500">
+        <div className="flex w-full justify-center text-[10px] uppercase tracking-widest text-stone-500 sm:w-auto sm:justify-end">
+          <div className="flex flex-col items-center gap-1.5 sm:items-end">
+            <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
               <span>{mode === 'internal' ? 'Internal Access' : 'Public Access'}</span>
               <span className="text-stone-700">•</span>
               <a
                 href="https://beightechai.com"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-accent/80 font-bold tracking-[0.2em] hover:underline"
+                className="font-bold tracking-[0.2em] text-accent/80 hover:underline"
               >
                 BeighTech
               </a>
             </div>
-            <span className="text-accent/60">
+            <span className="max-w-[min(100%,20rem)] text-center text-[10px] normal-case tracking-normal text-accent/70 sm:max-w-xs sm:text-right">
               Account: {currentUser ? (currentUser.email || 'Signed in') : 'Guest'} · Drive:{' '}
               {isAuthenticated ? 'Connected' : 'Off'}
             </span>
           </div>
         </div>
       </footer>
+      </div>
     </div>
   );
 }
