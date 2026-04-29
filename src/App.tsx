@@ -106,7 +106,8 @@ export default function App() {
   /** Visible text during stream — advances word-by-word toward `streamDraft` for a typewriter feel. */
   const [streamRevealText, setStreamRevealText] = useState('');
   const streamTargetRef = useRef('');
-  const [isComposerFocused, setIsComposerFocused] = useState(false);
+  /** True when mobile keyboard shrinks the visual viewport — hide footer chrome so layout doesn't jump. */
+  const [keyboardSquish, setKeyboardSquish] = useState(false);
 
   /** Invalidates in-flight `/api/auth/status` results so a slow initial fetch cannot overwrite state after login sets the cookie. */
   const authCheckSeq = useRef(0);
@@ -204,23 +205,26 @@ export default function App() {
     return () => mq.removeEventListener('change', sync);
   }, []);
 
-  // Stabilize mobile layout when the on-screen keyboard opens by sizing the app
-  // to the visual viewport height (iOS Safari especially).
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const vv = window.visualViewport;
-    const setAppHeight = () => {
-      const h = vv?.height || window.innerHeight;
-      document.documentElement.style.setProperty('--app-height', `${Math.round(h)}px`);
+    const syncSquish = () => {
+      const innerH = window.innerHeight || 1;
+      const vvh = vv?.height ?? innerH;
+      // Keyboard visible → visual viewport noticeably shorter than layout viewport.
+      setKeyboardSquish(vvh < innerH * 0.82);
     };
-    setAppHeight();
-    vv?.addEventListener('resize', setAppHeight);
-    window.addEventListener('resize', setAppHeight);
+    syncSquish();
+    vv?.addEventListener('resize', syncSquish);
+    vv?.addEventListener('scroll', syncSquish);
+    window.addEventListener('resize', syncSquish);
     return () => {
-      vv?.removeEventListener('resize', setAppHeight);
-      window.removeEventListener('resize', setAppHeight);
+      vv?.removeEventListener('resize', syncSquish);
+      vv?.removeEventListener('scroll', syncSquish);
+      window.removeEventListener('resize', syncSquish);
     };
   }, []);
+
 
   const fetchSessions = (uid: string) => {
     if (!db) return () => {};
@@ -992,10 +996,7 @@ export default function App() {
   };
 
   return (
-    <div
-      className="relative w-screen overflow-hidden flex flex-col min-h-0"
-      style={{ height: 'var(--app-height, 100dvh)' } as any}
-    >
+    <div className="relative min-h-screen h-[100svh] [height:100dvh] w-screen overflow-hidden flex flex-col min-h-0">
       {/* Background Atmosphere */}
       <div className="fixed inset-0 z-0 atmosphere pointer-events-none" />
       
@@ -1387,7 +1388,7 @@ export default function App() {
           {/* Chat Area */}
           <div className="flex-1 min-h-0 flex flex-col overflow-hidden items-center h-full min-w-0">
             {messages.length === 0 ? (
-              <div className="flex-1 min-h-0 w-full max-w-3xl overflow-y-auto overflow-x-hidden px-4 scrollbar-hide">
+              <div className="flex-1 min-h-0 w-full max-w-3xl overflow-y-auto overflow-x-hidden px-4 pb-32 scrollbar-hide">
                 <div className="min-h-full flex flex-col items-center justify-center text-center space-y-6 sm:space-y-8 py-8">
                 <motion.div 
                   initial={{ opacity: 0, y: 20 }}
@@ -1405,9 +1406,8 @@ export default function App() {
                   </p>
                 </motion.div>
 
-                {!isComposerFocused && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 w-full max-w-2xl">
-                    {(mode === 'public' ? [
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 w-full max-w-2xl">
+                  {(mode === 'public' ? [
                     "Tell me about 'Season 41'",
                     "What's the theme of the current season?",
                     "Where is Mill Hill Playhouse?",
@@ -1427,8 +1427,7 @@ export default function App() {
                       <p className="font-medium">{suggestion}</p>
                     </button>
                   ))}
-                  </div>
-                )}
+                </div>
                 </div>
               </div>
             ) : (
@@ -1540,8 +1539,15 @@ export default function App() {
               </div>
             )}
 
-            {/* Input Area */}
-            <div className="sticky bottom-0 w-full max-w-4xl px-2 sm:px-0 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] sm:pb-0 pt-2 sm:pt-4 bg-gradient-to-t from-[#05020a] via-[#05020a]/80 to-transparent">
+            {/* Reserve space so fixed composer doesn't cover suggestions/messages */}
+            <div className="h-28 shrink-0 sm:h-32" aria-hidden />
+          </div>
+        </div>
+      </main>
+
+      {/* Fixed composer — stays visually anchored while the OS keyboard opens */}
+      <div className="fixed left-0 right-0 bottom-0 z-[130] px-2 sm:px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 bg-[#05020a]/95 backdrop-blur-md border-t border-white/5">
+        <div className="max-w-4xl mx-auto relative">
               {selectedImage && (
                 <div className="absolute bottom-full mb-3 left-0 flex items-center gap-2 p-2 glass rounded-xl">
                   <img src={selectedImage.preview} alt="Preview" className="w-10 h-10 object-cover rounded-lg" />
@@ -1562,11 +1568,9 @@ export default function App() {
                     onChange={(e) => setInput(e.target.value)}
                     disabled={mode === 'internal' && !currentUser}
                     onFocus={() => {
-                      setIsComposerFocused(true);
                       setIsEventsPinnedOpen(false);
                       setIsEventsOpen(false);
                     }}
-                    onBlur={() => setIsComposerFocused(false)}
                     onKeyDown={(e) => {
                       const isEnter = e.key === 'Enter' || e.code === 'Enter' || e.code === 'NumpadEnter';
                       if (isEnter && !e.shiftKey) {
@@ -1585,7 +1589,7 @@ export default function App() {
                             ? "Draft a grant… (Connect Drive to attach files from Drive)"
                             : "Draft a grant or analyze data..."
                     }
-                    className="w-full max-w-full glass bg-white/5 rounded-2xl py-3.5 sm:py-4 pl-4 sm:pl-6 pr-20 sm:pr-32 text-[16px] sm:text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 transition-all placeholder:text-stone-600 disabled:opacity-60 disabled:cursor-not-allowed resize-none overflow-y-auto overflow-x-hidden leading-relaxed"
+                    className="w-full max-w-full rounded-2xl bg-white/[0.06] py-3.5 sm:py-4 pl-4 sm:pl-6 pr-20 sm:pr-32 text-[16px] sm:text-sm text-stone-100 placeholder:text-stone-600 shadow-none ring-1 ring-white/10 focus:outline-none focus:ring-2 focus:ring-accent/45 disabled:opacity-60 disabled:cursor-not-allowed resize-none overflow-y-auto overflow-x-hidden leading-relaxed [transform:translateZ(0)]"
                   />
                   <div className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 sm:gap-1">
                     <button
@@ -1660,13 +1664,11 @@ export default function App() {
                   <Send className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
               </form>
-            </div>
-          </div>
         </div>
-      </main>
+      </div>
 
       {/* Footer Decoration */}
-      <footer className="relative z-[100] px-4 sm:px-8 py-2 sm:py-4 flex flex-col sm:flex-row justify-between items-center gap-2 sm:gap-4 border-t border-white/5 bg-black/20 backdrop-blur-sm shrink-0 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] sm:pb-4">
+      <footer className={`relative z-[100] px-4 sm:px-8 py-2 sm:py-4 justify-between items-center gap-2 sm:gap-4 border-t border-white/5 bg-black/20 backdrop-blur-sm shrink-0 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] sm:pb-4 ${keyboardSquish ? 'hidden sm:flex sm:flex-row' : 'flex flex-col sm:flex-row'}`}>
         <div className="flex flex-col items-center sm:items-start gap-4">
           <span className="text-[10px] uppercase tracking-widest text-stone-500">&copy; 2026 Passage Theatre Company</span>
           <div className="flex flex-wrap items-center gap-4 justify-center sm:justify-start">
