@@ -120,6 +120,9 @@ async function startServer() {
   const { default: passageReindexHandler } = await import("./api/reindex.ts");
   app.post("/api/reindex", passageReindexHandler);
 
+  const { default: ragEnvCheckHandler } = await import("./api/rag-env-check.ts");
+  app.get("/api/rag-env-check", ragEnvCheckHandler);
+
   // Debug endpoint to check environment variables (safe version)
   app.get("/api/debug/config", (req, res) => {
     res.json({
