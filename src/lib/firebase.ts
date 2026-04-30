@@ -1,10 +1,14 @@
 import { initializeApp } from 'firebase/app';
 import {
+  initializeAuth,
   getAuth,
+  browserLocalPersistence,
+  browserPopupRedirectResolver,
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
+  type User,
 } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
@@ -43,7 +47,24 @@ if (!isFirebaseConfigured) {
 
 const app = isFirebaseConfigured ? initializeApp(firebaseConfig) : null;
 
-export const auth = app ? getAuth(app) : null;
+function createAuth() {
+  if (!app) return null;
+  try {
+    return initializeAuth(app, {
+      persistence: browserLocalPersistence,
+      popupRedirectResolver: browserPopupRedirectResolver,
+    });
+  } catch (e: unknown) {
+    const code = (e as { code?: string })?.code;
+    if (code === 'auth/already-initialized') {
+      return getAuth(app);
+    }
+    console.warn('[Firebase] initializeAuth failed; using getAuth', e);
+    return getAuth(app);
+  }
+}
+
+export const auth = createAuth();
 export const db = app
   ? firestoreDatabaseId
     ? getFirestore(app, firestoreDatabaseId)
@@ -83,13 +104,46 @@ export const signInWithDriveRedirect = () => {
   return signInWithRedirect(auth, googleProvider);
 };
 
-export const getRedirectAuthResult = async () => {
-  if (!auth) return null;
-  const result = await getRedirectResult(auth).catch(() => null);
-  if (!result) return null;
-  const credential = GoogleAuthProvider.credentialFromResult(result);
-  return {
-    user: result.user,
-    accessToken: credential?.accessToken,
-  };
+export type RedirectAuthPayload = {
+  user: User;
+  accessToken: string | undefined;
+};
+
+/**
+ * `getRedirectResult` must run at most once per full page load; React StrictMode and
+ * re-renders must share the same in-flight promise. Surfaces real errors instead of swallowing them.
+ */
+let redirectResultOnce: Promise<RedirectAuthPayload | null> | null = null;
+
+export const getRedirectAuthResult = (): Promise<RedirectAuthPayload | null> => {
+  if (!auth) return Promise.resolve(null);
+  if (!redirectResultOnce) {
+    redirectResultOnce = (async (): Promise<RedirectAuthPayload | null> => {
+      try {
+        await auth.authStateReady();
+      } catch (e) {
+        console.warn('[Firebase] authStateReady', e);
+      }
+      try {
+        const result = await getRedirectResult(auth);
+        if (result?.user) {
+          const credential = GoogleAuthProvider.credentialFromResult(result);
+          let accessToken = credential?.accessToken ?? undefined;
+          if (!accessToken) {
+            const tr = (result as { _tokenResponse?: { oauthAccessToken?: string } })?._tokenResponse;
+            if (tr?.oauthAccessToken) accessToken = tr.oauthAccessToken;
+          }
+          return { user: result.user, accessToken };
+        }
+      } catch (e) {
+        console.error('[Firebase] getRedirectResult failed', e);
+      }
+      const user = auth.currentUser;
+      if (user) {
+        return { user, accessToken: undefined };
+      }
+      return null;
+    })();
+  }
+  return redirectResultOnce;
 };

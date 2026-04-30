@@ -102,6 +102,11 @@ export default function App() {
   const ttsAbortRef = useRef<AbortController | null>(null);
   const [imageSize, setImageSize] = useState<"1K" | "2K" | "4K">("1K");
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  /** Footer collapses on composer focus (all breakpoints); stays hidden while chat has messages. */
+  const [composerFocused, setComposerFocused] = useState(false);
+  const composerBlurTimeoutRef = useRef(0);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isFirebaseLoggingIn, setIsFirebaseLoggingIn] = useState(false);
   const recognitionRef = useRef<any>(null);
   const [isImageSizeOpen, setIsImageSizeOpen] = useState(false);
   /** Non-null while a text reply is streaming; updates as tokens arrive (empty string = stream started, no text yet). */
@@ -113,27 +118,33 @@ export default function App() {
   const authCheckSeq = useRef(0);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  /** When true, new tokens keep the thread tail in view (ChatGPT-style follow). */
   const userPinnedToBottomRef = useRef(true);
 
-  const maybeAutoScroll = useCallback((opts?: { force?: boolean }) => {
+  /** Scroll the message list so the bottom sentinel stays in view — grows top→bottom; only follow when user is pinned to bottom. */
+  const scrollThreadToBottom = useCallback((opts?: { force?: boolean; smooth?: boolean }) => {
     const scroller = scrollRef.current;
-    if (!scroller) return;
-    const thresholdPx = 140;
-    const nearBottom =
-      scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - thresholdPx;
-    if (opts?.force || userPinnedToBottomRef.current || nearBottom) {
-      userPinnedToBottomRef.current = true;
-      const scrollToBottom = () => {
-        const el = scrollRef.current;
-        if (!el) return;
-        el.scrollTop = el.scrollHeight - el.clientHeight;
-      };
-      requestAnimationFrame(() => {
-        scrollToBottom();
-        requestAnimationFrame(scrollToBottom);
-      });
+    const tail = messagesEndRef.current;
+    if (!tail) return;
+    if (!opts?.force) {
+      if (scroller) {
+        const thresholdPx = 160;
+        const nearBottom =
+          scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - thresholdPx;
+        if (!userPinnedToBottomRef.current && !nearBottom) return;
+      } else if (!userPinnedToBottomRef.current) {
+        return;
+      }
     }
+    userPinnedToBottomRef.current = true;
+    const behavior: ScrollBehavior = opts?.smooth ? 'smooth' : 'auto';
+    requestAnimationFrame(() => {
+      tail.scrollIntoView({ block: 'end', inline: 'nearest', behavior });
+    });
   }, []);
+
+  const showChatScroller = messages.length > 0 || isLoading || streamDraft !== null;
+  const hideFooterChrome = messages.length > 0 || composerFocused;
 
   const PUBLIC_FOLDER_ID = '1SGoxWRv2WE_SKy4MwJhCl3A6nSy2KGwS';
   const INTERNAL_FOLDER_IDS = ['1l3KRkEaOKsVJLizriswqHn-whyc93aUk', '1j07-wxP7u9r9Y-V4ootX4KN3XB3YY0X4'];
@@ -258,6 +269,16 @@ export default function App() {
         alert("Firebase isn't configured yet (VITE_FIREBASE_*). The app will still work in guest mode, but chat history requires Firebase.");
         return;
       }
+      const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      if (isMobile) {
+        try {
+          await signInWithGoogleRedirect();
+        } catch (error: unknown) {
+          console.error('Firebase redirect login error:', error);
+          alert('Login failed. Please try again.');
+        }
+        return;
+      }
       try {
         const result = await signInWithGoogle();
         if (!result.user) return;
@@ -309,6 +330,20 @@ export default function App() {
       recognitionRef.current.onend = () => setIsListening(false);
     }
   }, []);
+
+  const handleComposerFocus = () => {
+    window.clearTimeout(composerBlurTimeoutRef.current);
+    setComposerFocused(true);
+    setIsEventsPinnedOpen(false);
+    setIsEventsOpen(false);
+  };
+
+  const handleComposerBlur = () => {
+    window.clearTimeout(composerBlurTimeoutRef.current);
+    composerBlurTimeoutRef.current = window.setTimeout(() => {
+      setComposerFocused(false);
+    }, 150);
+  };
 
   const toggleListening = () => {
     if (isListening) {
@@ -440,14 +475,13 @@ export default function App() {
   }, [currentUser, checkAuthStatus]);
 
   useEffect(() => {
-    // Complete Firebase redirect sign-in (mobile-friendly).
+    // Complete Firebase redirect sign-in (mobile). getRedirectResult is single-flighted in firebase.ts.
     (async () => {
       try {
         const r = await getRedirectAuthResult();
         if (!r?.user) return;
         setCurrentUser(r.user);
 
-        // If redirect granted Drive access, establish server session too.
         if (r.accessToken) {
           const res = await fetch('/api/auth/firebase-session', {
             method: 'POST',
@@ -463,6 +497,12 @@ export default function App() {
             const driveOk = await checkAuthStatus();
             if (driveOk) fetchAllFolders();
           }
+        } else {
+          console.warn(
+            '[Firebase] Signed in after redirect but no Google OAuth access token (Drive cookie cannot be set). If Connect Drive keeps looping, try Chrome on Android or desktop.'
+          );
+          const driveOk = await checkAuthStatus();
+          if (driveOk) fetchAllFolders();
         }
       } catch (e) {
         console.error('[Firebase] Redirect completion failed', e);
@@ -490,21 +530,27 @@ export default function App() {
     const scroller = scrollRef.current;
     scroller?.addEventListener('scroll', onScroll, { passive: true });
     return () => scroller?.removeEventListener('scroll', onScroll as any);
-  }, [messages.length]);
+  }, [messages.length, isLoading, streamDraft]);
 
-  // Keep pinned to bottom as new messages / streaming tokens arrive.
+  // Follow the streaming tail (auto) so new text grows downward in view; smooth on discrete adds.
   useEffect(() => {
-    maybeAutoScroll();
-  }, [messages.length, streamRevealText, streamDraft, maybeAutoScroll]);
+    if (!showChatScroller) return;
+    const smooth = streamDraft === null && !isLoading;
+    scrollThreadToBottom({ smooth });
+  }, [messages.length, streamRevealText, streamDraft, isLoading, showChatScroller, scrollThreadToBottom]);
 
   // When the mobile keyboard opens/closes, stay anchored to the latest message.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const vv = window.visualViewport;
-    const onResize = () => maybeAutoScroll({ force: true });
+    const onResize = () => scrollThreadToBottom({ force: true });
     vv?.addEventListener('resize', onResize);
     return () => vv?.removeEventListener('resize', onResize);
-  }, [maybeAutoScroll]);
+  }, [scrollThreadToBottom]);
+
+  useEffect(() => {
+    return () => window.clearTimeout(composerBlurTimeoutRef.current);
+  }, []);
 
   if (streamDraft !== null) {
     streamTargetRef.current = streamDraft;
@@ -551,21 +597,12 @@ export default function App() {
   }, [streamDraft !== null]);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages, streamDraft, streamRevealText]);
-
-  useEffect(() => {
     const el = composerRef.current;
     if (!el) return;
     el.style.height = 'auto';
     const maxPx = 160; // ~6-7 lines
     el.style.height = `${Math.min(el.scrollHeight, maxPx)}px`;
   }, [input]);
-
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [isFirebaseLoggingIn, setIsFirebaseLoggingIn] = useState(false);
 
   const exitChat = () => {
     setSelectedImage(null);
@@ -817,6 +854,8 @@ export default function App() {
       return;
     }
     if ((!input.trim() && !selectedImage) || isLoading) return;
+
+    userPinnedToBottomRef.current = true;
 
     let sessionId = currentSessionId;
     let sessionEnsureFailed = false;
@@ -1119,7 +1158,7 @@ export default function App() {
   };
 
   return (
-    <div className="relative flex h-[100svh] min-h-0 w-screen flex-col overflow-hidden bg-[#05020a] [height:100dvh]">
+    <div className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-[#05020a]">
       {/* Background Atmosphere */}
       <div className="fixed inset-0 z-0 atmosphere pointer-events-none" />
       
@@ -1280,9 +1319,9 @@ export default function App() {
         </div>
       </header>
 
-      <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 min-h-0 flex-col px-2 sm:px-4">
-      {/* Main Content */}
-      <main className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden py-2 sm:py-4">
+      <div className="relative z-10 mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col overflow-hidden px-2 sm:px-4">
+      {/* Main Content — flex-1 fills space between header and (desktop) footer; messages scroll inside */}
+      <main className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden py-2 sm:py-4">
         <div className="flex-1 min-h-0 flex gap-4 sm:gap-6 overflow-hidden relative">
           
           {/* History + Drive: overlay only (no persistent desktop column) */}
@@ -1524,7 +1563,7 @@ export default function App() {
           {/* Chat Area */}
           <div className="flex-1 min-h-0 flex flex-col overflow-hidden items-center h-full min-w-0">
             {messages.length === 0 ? (
-              <div className="flex min-h-0 w-full max-w-3xl flex-1 flex-col overflow-y-auto overflow-x-hidden px-4 pb-6 scrollbar-hide sm:mx-auto">
+              <div className="flex min-h-0 w-full max-w-3xl flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-y-contain [-webkit-overflow-scrolling:touch] px-4 pb-6 scrollbar-hide sm:mx-auto">
                 <div className="flex flex-1 flex-col items-center justify-center gap-6 py-6 text-center sm:gap-8 sm:py-10">
                 <motion.div 
                   initial={{ opacity: 0, y: 20 }}
@@ -1581,7 +1620,7 @@ export default function App() {
             ) : (
               <div
                 ref={scrollRef}
-                className="flex-1 min-h-0 w-full max-w-4xl mx-auto overflow-y-auto overflow-x-hidden space-y-6 sm:space-y-8 pr-2 sm:pr-4 scrollbar-hide pb-4 sm:pb-6"
+                className="min-h-0 flex-1 w-full max-w-4xl mx-auto overflow-y-auto overflow-x-hidden overscroll-y-contain [-webkit-overflow-scrolling:touch] space-y-6 sm:space-y-8 pr-2 sm:pr-4 scrollbar-hide pb-4 sm:pb-6"
               >
                 <AnimatePresence initial={false}>
                   {messages.map((message) => (
@@ -1654,7 +1693,7 @@ export default function App() {
                     </div>
                     <div className="max-w-[85%] sm:max-w-[80%] space-y-1">
                       <div className="p-3 sm:p-4 rounded-2xl overflow-hidden glass text-stone-200 text-sm sm:text-base leading-relaxed">
-                        {streamDraft.length === 0 ? (
+                        {streamRevealText.length === 0 && (streamDraft?.length ?? 0) === 0 ? (
                           <div className="flex items-center gap-2">
                             <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin text-accent shrink-0" />
                             <span className="text-[10px] sm:text-xs text-stone-400 italic">Passage is composing…</span>
@@ -1662,7 +1701,7 @@ export default function App() {
                         ) : (
                           <div className="whitespace-pre-wrap">
                             {renderContent(streamRevealText)}
-                            {streamRevealText.length < streamDraft.length && (
+                            {streamRevealText.length < (streamDraft?.length ?? 0) && (
                               <span className="inline-block w-0.5 h-[1em] ml-0.5 align-[-0.15em] bg-accent/80 animate-pulse rounded-sm" aria-hidden />
                             )}
                           </div>
@@ -1688,8 +1727,8 @@ export default function App() {
               </div>
             )}
 
-            {/* Composer — single row (textarea + inline tools + send); no nested glass frames */}
-            <div className="relative z-20 mt-auto w-full shrink-0 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 sm:pb-3">
+            {/* Composer — pinned above footer; footer collapses on focus via hideFooterChrome */}
+            <div className="relative z-20 mt-auto w-full shrink-0 border-t border-transparent pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:border-t-0 sm:pb-3">
               <div className="relative mx-auto w-full max-w-4xl px-1 sm:px-0">
               {selectedImage && (
                 <div className="absolute bottom-full mb-3 left-0 flex items-center gap-2 rounded-xl border border-white/5 bg-stone-900/40 p-2 backdrop-blur-md">
@@ -1710,10 +1749,8 @@ export default function App() {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     disabled={mode === 'internal' && !currentUser}
-                    onFocus={() => {
-                      setIsEventsPinnedOpen(false);
-                      setIsEventsOpen(false);
-                    }}
+                    onFocus={handleComposerFocus}
+                    onBlur={handleComposerBlur}
                     onKeyDown={(e) => {
                       const isEnter = e.key === 'Enter' || e.code === 'Enter' || e.code === 'NumpadEnter';
                       if (isEnter && !e.shiftKey) {
@@ -1813,8 +1850,14 @@ export default function App() {
         </div>
       </main>
 
-      {/* Footer Decoration */}
-      <footer className="relative z-[100] flex shrink-0 flex-col gap-6 border-t border-white/5 bg-black/5 px-4 pt-4 pb-8 backdrop-blur-sm sm:flex-row sm:items-end sm:justify-between sm:px-8">
+      {/* Footer — collapses on composer focus + stays hidden once the thread has messages */}
+      <div
+        className={`relative z-[100] shrink-0 overflow-hidden transition-[max-height,opacity] duration-300 ease-out motion-reduce:transition-none ${
+          hideFooterChrome ? 'pointer-events-none max-h-0 opacity-0' : 'max-h-[min(52vh,520px)] opacity-100'
+        }`}
+        aria-hidden={hideFooterChrome}
+      >
+      <footer className="flex shrink-0 flex-col gap-6 border-t border-white/5 bg-black/5 px-4 pt-4 pb-8 backdrop-blur-sm sm:flex-row sm:items-end sm:justify-between sm:px-8">
         <div className="flex flex-col items-center gap-4 sm:items-start">
           <span className="text-[10px] uppercase tracking-widest text-stone-500">&copy; 2026 Passage Theatre Company</span>
           <div className="flex flex-wrap items-center justify-center gap-4 sm:justify-start">
@@ -1901,6 +1944,7 @@ export default function App() {
           </div>
         </div>
       </footer>
+      </div>
       </div>
     </div>
   );

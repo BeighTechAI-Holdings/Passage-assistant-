@@ -1,0 +1,41 @@
+{
+  "version": 1.1,
+  "atDirectives": [
+    {
+      "name": "@theme",
+      "description": "Tailwind CSS v4: define design tokens (see tailwindcss.com)."
+    },
+    {
+      "name": "@apply",
+      "description": "Tailwind CSS: compose utility classes into custom CSS rules."
+    },
+    {
+      "name": "@layer",
+      "description": "Tailwind CSS: declare cascade layers (base, components, utilities)."
+    },
+    {
+      "name": "@config",
+      "description": "Tailwind CSS: reference a legacy JS config path."
+    },
+    {
+      "name": "@plugin",
+      "description": "Tailwind CSS v4: load a plugin."
+    },
+    {
+      "name": "@source",
+      "description": "Tailwind CSS v4: explicit content/source globs."
+    },
+    {
+      "name": "@utility",
+      "description": "Tailwind CSS v4: define custom utilities."
+    },
+    {
+      "name": "@variant",
+      "description": "Tailwind CSS v4: define custom variants."
+    },
+    {
+      "name": "@custom-variant",
+      "description": "Tailwind CSS v4: named custom variant."
+    }
+  ]
+}
