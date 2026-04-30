@@ -4,12 +4,14 @@ import {
   getAuth,
   indexedDBLocalPersistence,
   browserLocalPersistence,
+  browserSessionPersistence,
   browserPopupRedirectResolver,
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
   reauthenticateWithRedirect,
+  setPersistence,
   type User,
   type UserCredential,
 } from 'firebase/auth';
@@ -68,6 +70,36 @@ function createAuth() {
 }
 
 export const auth = createAuth();
+
+/**
+ * Incognito / iOS Safari can restrict IndexedDB/localStorage. Ensure we land on a workable persistence.
+ * This runs on module load (not in a click handler), so it's safe to `await` here.
+ */
+let persistenceReadyOnce: Promise<void> | null = null;
+export function ensureAuthPersistence(): Promise<void> {
+  if (!auth) return Promise.resolve();
+  if (!persistenceReadyOnce) {
+    persistenceReadyOnce = (async () => {
+      try {
+        await setPersistence(auth, browserLocalPersistence);
+        console.log('[Firebase] Persistence set to browserLocalPersistence');
+      } catch (e) {
+        console.warn('[Firebase] browserLocalPersistence unavailable; falling back to session', e);
+        try {
+          await setPersistence(auth, browserSessionPersistence);
+          console.log('[Firebase] Persistence set to browserSessionPersistence');
+        } catch (e2) {
+          console.error('[Firebase] Failed to set any persistence', e2);
+        }
+      }
+    })();
+  }
+  return persistenceReadyOnce;
+}
+
+// Kick off persistence selection as early as possible.
+void ensureAuthPersistence();
+
 export const db = app
   ? firestoreDatabaseId
     ? getFirestore(app, firestoreDatabaseId)
@@ -190,15 +222,26 @@ export const getRedirectAuthResult = (): Promise<RedirectAuthPayload | null> => 
       let accessToken: string | undefined;
 
       try {
+        // Important: ensure persistence is set before we attempt to read redirect result.
+        await ensureAuthPersistence();
         const result = await getRedirectResult(auth);
+        console.log('[Firebase] getRedirectResult raw:', result);
         if (result?.user) {
           redirectCredUser = result.user;
+          console.log('[Firebase] getRedirectResult user:', {
+            uid: result.user.uid,
+            email: result.user.email,
+            providerData: result.user.providerData?.map((p) => ({ providerId: p.providerId, uid: p.uid })),
+          });
           const credential = GoogleAuthProvider.credentialFromResult(result);
           accessToken = credential?.accessToken ?? undefined;
           if (!accessToken) {
             const tr = (result as { _tokenResponse?: { oauthAccessToken?: string } })?._tokenResponse;
             if (tr?.oauthAccessToken) accessToken = tr.oauthAccessToken;
           }
+          console.log('[Firebase] redirect credential accessToken present:', !!accessToken);
+        } else {
+          console.log('[Firebase] getRedirectResult: no result.user (null or missing user)');
         }
       } catch (e) {
         console.error('[Firebase] getRedirectResult failed', e);
@@ -211,6 +254,7 @@ export const getRedirectAuthResult = (): Promise<RedirectAuthPayload | null> => 
       }
 
       const sessionUser = auth.currentUser;
+      console.log('[Firebase] auth.currentUser after authStateReady:', sessionUser?.uid ?? null);
       const user = redirectCredUser ?? sessionUser ?? null;
       if (!user) return null;
 
@@ -223,5 +267,6 @@ export const getRedirectAuthResult = (): Promise<RedirectAuthPayload | null> => 
 /** Start listening for redirect results ASAP (before React mounts). Safe to call multiple times. */
 export function primeRedirectResult(): void {
   if (typeof window === 'undefined') return;
+  console.log('[Firebase] priming redirect result capture');
   void getRedirectAuthResult();
 }

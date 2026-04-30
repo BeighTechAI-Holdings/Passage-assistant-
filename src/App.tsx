@@ -202,6 +202,7 @@ export default function App() {
     if (!auth) return;
 
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      console.log('[Firebase] onAuthStateChanged:', user ? { uid: user.uid, email: user.email } : null);
       setCurrentUser(user);
       if (user) {
         setMode('internal');
@@ -461,8 +462,10 @@ export default function App() {
     (async () => {
       try {
         const r = await getRedirectAuthResult();
+        console.log('[Firebase] getRedirectAuthResult payload:', r);
         if (cancelled) return;
         if (r?.user) {
+          console.log('[Firebase] Applying redirect user to state:', { uid: r.user.uid, email: r.user.email });
           setCurrentUser(r.user);
 
           if (r.accessToken) {
