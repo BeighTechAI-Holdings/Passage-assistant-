@@ -11,6 +11,7 @@ import {
   getRedirectResult,
   reauthenticateWithRedirect,
   type User,
+  type UserCredential,
 } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
@@ -89,8 +90,36 @@ googleDriveProvider.addScope('https://www.googleapis.com/auth/drive.readonly');
 googleDriveProvider.addScope('https://www.googleapis.com/auth/userinfo.email');
 googleDriveProvider.addScope('https://www.googleapis.com/auth/userinfo.profile');
 
-export const signInWithGoogle = () => {
+/**
+ * Popups are unreliable on iOS Safari and often blocked in Brave. Use full-page redirect there.
+ * `navigator.brave.isBrave()` covers Brave when the UA string omits "Brave".
+ */
+export function shouldUseFirebaseAuthRedirectSync(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod|Android/i.test(ua)) return true;
+  if (/\bBrave\b/i.test(ua)) return true;
+  return false;
+}
+
+export async function shouldUseFirebaseAuthRedirectAsync(): Promise<boolean> {
+  if (shouldUseFirebaseAuthRedirectSync()) return true;
+  const nav = navigator as Navigator & { brave?: { isBrave: () => Promise<boolean> } };
+  try {
+    if (nav.brave?.isBrave && (await nav.brave.isBrave())) return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
+/** Popup on desktop Chrome; redirect on mobile Safari / Brave (and similar). Returns null when redirect starts (page navigates away). */
+export const signInWithGoogle = async (): Promise<UserCredential | null> => {
   if (!auth) throw new Error('Firebase is not configured');
+  if (await shouldUseFirebaseAuthRedirectAsync()) {
+    await signInWithRedirect(auth, googleSignInProvider);
+    return null;
+  }
   return signInWithPopup(auth, googleSignInProvider);
 };
 

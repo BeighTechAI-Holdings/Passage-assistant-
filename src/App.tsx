@@ -10,6 +10,7 @@ import {
   db,
   getRedirectAuthResult,
   isFirebaseConfigured,
+  shouldUseFirebaseAuthRedirectAsync,
   signInWithDrive,
   signInWithGoogle,
   signInWithGoogleRedirect,
@@ -269,18 +270,9 @@ export default function App() {
         alert("Firebase isn't configured yet (VITE_FIREBASE_*). The app will still work in guest mode, but chat history requires Firebase.");
         return;
       }
-      const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      if (isMobile) {
-        try {
-          await signInWithGoogleRedirect();
-        } catch (error: unknown) {
-          console.error('Firebase redirect login error:', error);
-          alert('Login failed. Please try again.');
-        }
-        return;
-      }
       try {
         const result = await signInWithGoogle();
+        if (!result) return;
         if (!result.user) return;
       } catch (error: any) {
         if (error.code === 'auth/popup-closed-by-user') {
@@ -454,7 +446,6 @@ export default function App() {
   const renderContent = (content: string) => renderMarkdown(content);
 
   useEffect(() => {
-    void checkAuthStatus();
     fetchDriveFiles(PUBLIC_FOLDER_ID, setPublicFiles);
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
@@ -464,7 +455,62 @@ export default function App() {
       }
     };
     window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+
+    let cancelled = false;
+    // getRedirectResult must run before /api/auth/status so the returning OAuth session is applied first (iOS Safari / redirect flows).
+    (async () => {
+      try {
+        const r = await getRedirectAuthResult();
+        if (cancelled) return;
+        if (r?.user) {
+          setCurrentUser(r.user);
+
+          if (r.accessToken) {
+            const res = await fetch('/api/auth/firebase-session', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ accessToken: r.accessToken }),
+              credentials: 'include',
+            });
+            if (cancelled) return;
+            if (res.ok) {
+              authCheckSeq.current += 1;
+              setIsAuthenticated(true);
+              fetchAllFolders();
+            } else {
+              let code: string | undefined;
+              try {
+                const j = (await res.json()) as { code?: string };
+                code = j?.code;
+              } catch {
+                /* ignore */
+              }
+              if (code === 'MISSING_DRIVE_SCOPE') {
+                console.warn(
+                  '[OAuth] Signed in with Google; Drive permission pending — tap Connect Drive once more.'
+                );
+              }
+              const driveOk = await checkAuthStatus();
+              if (!cancelled && driveOk) fetchAllFolders();
+            }
+          } else {
+            console.warn(
+              '[Firebase] Signed in after redirect but no OAuth access token in credential (Safari/WebKit). Tap Connect Drive to finish.'
+            );
+            const driveOk = await checkAuthStatus();
+            if (!cancelled && driveOk) fetchAllFolders();
+          }
+        }
+      } catch (e) {
+        console.error('[Firebase] Redirect completion failed', e);
+      }
+      if (!cancelled) await checkAuthStatus();
+    })();
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('message', handleMessage);
+    };
   }, [checkAuthStatus]);
 
   /** Re-sync Drive cookie after Firebase restores session (cookie may be set slightly after auth). */
@@ -473,54 +519,6 @@ export default function App() {
     const t = window.setTimeout(() => void checkAuthStatus(), 400);
     return () => window.clearTimeout(t);
   }, [currentUser, checkAuthStatus]);
-
-  useEffect(() => {
-    // Complete Firebase redirect sign-in (mobile). getRedirectResult is single-flighted in firebase.ts.
-    (async () => {
-      try {
-        const r = await getRedirectAuthResult();
-        if (!r?.user) return;
-        setCurrentUser(r.user);
-
-        if (r.accessToken) {
-          const res = await fetch('/api/auth/firebase-session', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ accessToken: r.accessToken }),
-            credentials: 'include',
-          });
-          if (res.ok) {
-            authCheckSeq.current += 1;
-            setIsAuthenticated(true);
-            fetchAllFolders();
-          } else {
-            let code: string | undefined;
-            try {
-              const j = (await res.json()) as { code?: string };
-              code = j?.code;
-            } catch {
-              /* ignore */
-            }
-            if (code === 'MISSING_DRIVE_SCOPE') {
-              console.warn(
-                '[OAuth] Signed in with Google; Drive permission pending — tap Connect Drive once more.'
-              );
-            }
-            const driveOk = await checkAuthStatus();
-            if (driveOk) fetchAllFolders();
-          }
-        } else {
-          console.warn(
-            '[Firebase] Signed in after redirect but no OAuth access token in credential (Safari/WebKit). Tap Connect Drive to finish.'
-          );
-          const driveOk = await checkAuthStatus();
-          if (driveOk) fetchAllFolders();
-        }
-      } catch (e) {
-        console.error('[Firebase] Redirect completion failed', e);
-      }
-    })();
-  }, [checkAuthStatus]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -677,12 +675,8 @@ export default function App() {
         alert("Missing Firebase env vars (VITE_FIREBASE_*). Add them to your .env, restart dev server, then try again.");
         return;
       }
-      const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      if (isMobile) {
-        await signInWithGoogleRedirect();
-        return;
-      }
-      await signInWithGoogle();
+      const cred = await signInWithGoogle();
+      if (!cred) return;
       if (auth?.currentUser) {
         try {
           localStorage.setItem(PASSAGE_PREFER_INTERNAL, '1');
@@ -712,14 +706,13 @@ export default function App() {
         return;
       }
 
-      const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      if (isMobile) {
+      if (await shouldUseFirebaseAuthRedirectAsync()) {
         const u = auth?.currentUser ?? currentUser;
         if (!u) {
-          console.log('[OAuth] Mobile step 1: Firebase Google sign-in redirect');
+          console.log('[OAuth] Redirect step 1: Firebase Google sign-in (mobile Safari / Brave)');
           await signInWithGoogleRedirect();
         } else {
-          console.log('[OAuth] Mobile step 2: Drive consent redirect');
+          console.log('[OAuth] Redirect step 2: Drive consent');
           await reauthenticateDriveRedirect(u);
         }
         return;
@@ -1057,7 +1050,7 @@ export default function App() {
           const decoder = new TextDecoder('utf-8');
           let buffer = '';
           let accumulated = '';
-          let cites: Array<{ n?: number; name?: string; url?: string }> = [];
+          let cites: Array<{ name?: string; url?: string; detail?: string }> = [];
 
           const parseSse = (chunk: string) => {
             buffer += chunk;
@@ -1112,9 +1105,14 @@ export default function App() {
           let finalText = (accumulated || '').trim();
           if (cites.length) {
             const lines = cites
-              .map((c) => `- (${c.n ?? '?'}) ${c.name ?? 'Document'}${c.url ? ` — ${c.url}` : ''}`)
+              .map((c) => {
+                const title = c.name ?? 'Document';
+                const detail = typeof c.detail === 'string' && c.detail.trim() ? ` (${c.detail.trim()})` : '';
+                const link = c.url ? ` — ${c.url}` : '';
+                return `- ${title}${detail}${link}`;
+              })
               .join('\n');
-            finalText += `\n\n---\nSources\n${lines}`;
+            finalText += `\n\n---\n**Sources:**\n${lines}`;
           }
           responseContent = finalText || "I'm sorry, I couldn't process that.";
         } else {

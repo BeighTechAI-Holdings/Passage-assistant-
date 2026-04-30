@@ -122,6 +122,9 @@ export async function indexDriveFolderIncremental(opts: {
               name: f.name,
               mimeType: f.mimeType,
               modifiedTime: f.modifiedTime,
+              modified_date: f.modifiedTime
+                ? new Date(f.modifiedTime).toISOString().slice(0, 10)
+                : null,
               truncated: extracted.truncated,
             },
           }))

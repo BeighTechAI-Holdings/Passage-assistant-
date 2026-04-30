@@ -5,6 +5,71 @@ import { INTERNAL_PASSAGE_INSTITUTIONAL } from "./lib/passageKnowledge.js";
 
 type ChatTurn = { role: "user" | "assistant"; content: string };
 
+type RagMatch = {
+  name: string;
+  drive_web_view_link: string | null;
+  drive_file_id: string;
+  content: string;
+};
+
+/** Short label from chunk text for collapsed source lines (heading-like line or truncated excerpt). */
+function chunkSectionHint(content: string): string {
+  const lines = content.split("\n");
+  for (const raw of lines) {
+    const t = raw.trim();
+    if (!t) continue;
+    const s = t
+      .replace(/^#{1,6}\s+/, "")
+      .replace(/^\*\s+/, "")
+      .replace(/\*{1,2}/g, "")
+      .trim();
+    if (s.length < 8) continue;
+    if (/^page\s+\d+/i.test(s)) continue;
+    return s.length > 120 ? `${s.slice(0, 117).trimEnd()}…` : s;
+  }
+  const one = content.replace(/\s+/g, " ").trim();
+  return one.length > 100 ? `${one.slice(0, 97).trimEnd()}…` : one;
+}
+
+/** One row per Drive file; merges repeated chunks into a single line with section hints. */
+function buildDedupedCitationDisplay(matches: RagMatch[]): Array<{
+  name: string;
+  url: string | null;
+  detail?: string;
+}> {
+  type Agg = { name: string; url: string | null; hintsLower: Set<string>; hints: string[]; ord: number };
+  const byDoc = new Map<string, Agg>();
+  let ord = 0;
+
+  for (const m of matches) {
+    const key = m.drive_file_id;
+    let agg = byDoc.get(key);
+    if (!agg) {
+      agg = { name: m.name, url: m.drive_web_view_link, hintsLower: new Set(), hints: [], ord: ord++ };
+      byDoc.set(key, agg);
+    }
+
+    const hint = chunkSectionHint(m.content);
+    const low = hint.toLowerCase();
+    if (!hint || agg.hintsLower.has(low)) continue;
+    agg.hintsLower.add(low);
+    agg.hints.push(hint);
+  }
+
+  return [...byDoc.values()]
+    .sort((a, b) => a.ord - b.ord)
+    .map((v) => {
+      const hints = v.hints;
+      const joined =
+        hints.length <= 4 ? hints.join(", ") : `${hints.slice(0, 3).join(", ")}, …`;
+      return {
+        name: v.name,
+        url: v.url,
+        ...(hints.length ? { detail: `sections on ${joined}` } : {}),
+      };
+    });
+}
+
 async function callClaude(opts: { system: string; messages: ChatTurn[] }) {
   const apiKey = mustGetEnv("ANTHROPIC_API_KEY");
   const model = getOptionalEnv("ANTHROPIC_MODEL") || "claude-sonnet-4-6";
@@ -82,14 +147,7 @@ export default async function handler(req: any, res: any) {
       console.error("[chat] RAG retrieval failed (continuing with institutional context only):", ragErr);
     }
 
-    const citations = matches.map((m, i) => ({
-      n: i + 1,
-      name: m.name,
-      url: m.drive_web_view_link,
-      drive_file_id: m.drive_file_id,
-      chunk_id: m.chunk_id,
-      similarity: m.similarity,
-    }));
+    const citations = buildDedupedCitationDisplay(matches);
 
     const contextBlock =
       matches.length === 0
@@ -111,6 +169,7 @@ RULES:
 - Use SOURCES when they contain relevant facts; cite inline like (Source [2]: Strategic Plan).
 - When SOURCES are empty or off-topic BUT the question is answered by INSTITUTIONAL FACTS above, answer from those facts. Do not claim you have no information about Passage leadership or pillars if those facts apply.
 - When neither SOURCES nor institutional facts suffice, say so plainly and do not invent citations.
+- Do not end with a "**Sources:**" or bibliography block; the app lists cited Drive documents once, deduplicated by file.
 
 SOURCES:
 ${contextBlock}`;

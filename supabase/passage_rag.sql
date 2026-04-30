@@ -92,7 +92,17 @@ as $$
   from public.passage_chunks c
   join public.passage_documents d on d.id = c.document_id
   where 1 - (c.embedding <=> query_embedding) >= match_threshold
-  order by (c.embedding <=> query_embedding) asc
+  -- Prefer newer institutional docs without excluding strong older matches:
+  -- subtract a small distance bias when modified_time is on/after 2024-01-01 ("after 2023").
+  order by
+    (
+      (c.embedding <=> query_embedding)
+      - case
+          when coalesce(d.modified_time, '-infinity'::timestamptz) >= timestamptz '2024-01-01 00:00:00+00'
+          then 0.045
+          else 0
+        end
+    ) asc
   limit least(match_count, 50);
 $$;
 
